@@ -89,7 +89,18 @@ func Login(c echo.Context) error {
 	}
 	result, err := model.Login(string(akun))
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetUserById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetUserById(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
 	ip := c.RealIP()
 	model.InsertLog(ip, "UploadFoto", result.Data, 3)

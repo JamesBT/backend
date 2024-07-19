@@ -24,7 +24,9 @@ func Init() *echo.Echo {
 
 	e.POST("/barang", controler.InsertBarang)
 
-	e.POST("/user", controler.Login)
+	e.POST("/user/auth", controler.Login)
+	// e.POST("/user")
+	e.GET("/user/:id", controler.GetUserById)
 
 	return e
 }

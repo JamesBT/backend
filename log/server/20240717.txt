@@ -1,0 +1,2 @@
+<2024-07-17 13:30:48>|| {REQUEST: uri: /user/1, status: 500, ip:::1, Host:localhost:2681, ContentLength:, User-Agent:PostmanRuntime/7.40.0, Error:<nil>, Latency:24.0717ms, method:GET ,Protocol:HTTP/1.1, RequestId:, ResponseSize:68, custom-value: 42}
+<2024-07-17 13:36:23>|| {REQUEST: uri: /user/1, status: 200, ip:::1, Host:localhost:2681, ContentLength:, User-Agent:PostmanRuntime/7.40.0, Error:<nil>, Latency:27.2595ms, method:GET ,Protocol:HTTP/1.1, RequestId:, ResponseSize:266, custom-value: 42}
