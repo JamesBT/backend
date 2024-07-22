@@ -93,7 +93,17 @@ func Login(akun string) (Response, error) {
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil login"
-	res.Data = map[string]int{"id": userId}
+	res.Data = map[string]interface{}{
+		"id":            loginUsr.Id,
+		"username":      loginUsr.Username,
+		"nama_lengkap":  loginUsr.Nama_lengkap,
+		"alamat":        loginUsr.Alamat,
+		"jenis_kelamin": loginUsr.Jenis_kelamin,
+		"tanggal_lahir": loginUsr.Tgl_lahir,
+		"email":         loginUsr.Email,
+		"nomor_telepon": loginUsr.No_telp,
+		"foto_profil":   loginUsr.Foto_profil,
+	}
 
 	defer db.DbClose(con)
 
