@@ -18,14 +18,8 @@ func Init() *echo.Echo {
 		return c.String(http.StatusOK, "welcome here")
 	})
 
-	e.GET("/kirimAngka/:angka", controler.KirimAngka)
-	e.GET("/barang", controler.GetAllBarang)
-	e.GET("/barang/:id", controler.GetBarangById)
-
-	e.POST("/barang", controler.InsertBarang)
-
+	e.POST("/user", controler.SignUp)
 	e.POST("/user/auth", controler.Login)
-	// e.POST("/user")
 	e.GET("/user/:id", controler.GetUserById)
 
 	return e

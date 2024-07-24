@@ -71,8 +71,9 @@ func Login(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	// berhasil login => update timestamp terakhir login
+	// ambil role + privilege
 
+	// berhasil login => update timestamp terakhir login
 	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
 	updatestmt, err := con.Prepare(updateQuery)
 	if err != nil {
@@ -157,7 +158,7 @@ func SignUp(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	// cek apakah password benar atau tidak
+	// masukkan ke db
 	insertquery := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon) VALUES (?,?,?,?,?)"
 	insertstmt, err := con.Prepare(insertquery)
 	if err != nil {
@@ -221,7 +222,7 @@ func GetUserById(id_user string) (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT user_id, username, password,nama_lengkap,alamat,jenis_kelamin,tanggal_lahir,email,nomor_telepon,foto_profil FROM user WHERE user_id = ?"
+	query := "SELECT user_id, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, nomor_telepon, foto_profil, ktp FROM user WHERE user_id = ?"
 	stmt, err := con.Prepare(query)
 
 	if err != nil {
@@ -233,7 +234,7 @@ func GetUserById(id_user string) (Response, error) {
 	defer stmt.Close()
 
 	nId, _ := strconv.Atoi(id_user)
-	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Password, &usr.Nama_lengkap, &usr.Alamat, &usr.Jenis_kelamin, &usr.Tgl_lahir, &usr.Email, &usr.No_telp, &usr.Foto_profil)
+	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.Alamat, &usr.Jenis_kelamin, &usr.Tgl_lahir, &usr.Email, &usr.No_telp, &usr.Foto_profil, &usr.Ktp)
 	if err != nil {
 		res.Status = 401
 		res.Message = "rows gagal"
@@ -252,6 +253,8 @@ func GetUserById(id_user string) (Response, error) {
 
 func ForgotPass(email string) (Response, error) {
 	var res Response
+
+	// asd
 
 	return res, nil
 }

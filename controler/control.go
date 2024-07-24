@@ -36,58 +36,26 @@ func UploadFoto(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-func KirimAngka(c echo.Context) error {
-	jumlah_angka := c.Param("angka")
-	result, err := model.KirimAngka(jumlah_angka)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
-	}
-	ip := c.RealIP()
-	model.InsertLog(ip, "UploadFoto", result.Data, 3)
-	return c.JSON(http.StatusOK, result)
-}
-
-func GetAllBarang(c echo.Context) error {
-	result, err := model.GetAllBarang()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
-	}
-	ip := c.RealIP()
-	model.InsertLog(ip, "UploadFoto", result.Data, 3)
-	return c.JSON(http.StatusOK, result)
-}
-
-func GetBarangById(c echo.Context) error {
-	id := c.Param("id")
-	result, err := model.GetBarangById(id)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
-	}
-	ip := c.RealIP()
-	model.InsertLog(ip, "UploadFoto", result.Data, 3)
-	return c.JSON(http.StatusOK, result)
-}
-
-func InsertBarang(c echo.Context) error {
-	barang, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
-	}
-	result, err := model.InsertBarang(string(barang))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
-	}
-	ip := c.RealIP()
-	model.InsertLog(ip, "UploadFoto", result.Data, 3)
-	return c.JSON(http.StatusOK, result)
-}
-
 func Login(c echo.Context) error {
 	akun, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
 	result, err := model.Login(string(akun))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func SignUp(c echo.Context) error {
+	akun, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.SignUp(string(akun))
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
