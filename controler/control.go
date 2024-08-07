@@ -2,6 +2,7 @@ package controler
 
 import (
 	"TemplateProject/model"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -89,6 +90,33 @@ func UpdateUser(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func UpdateUserFull(c echo.Context) error {
+	userId := c.FormValue("id")
+	username := c.FormValue("username")
+	nama_lengkap := c.FormValue("nama_lengkap")
+	alamat := c.FormValue("alamat")
+	jenis_kelamin := c.FormValue("jenis_kelamin")
+	tanggal_lahir := c.FormValue("tanggal_lahir")
+	email := c.FormValue("email")
+	no_telp := c.FormValue("no_telp")
+	fileFoto, err := c.FormFile("fileFoto")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	fileKTP, err := c.FormFile("fileKTP")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.UpdateUserFull(fileFoto, fileKTP, userId, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, no_telp)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func DeleteUserById(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.DeleteUserById(id)
@@ -98,4 +126,48 @@ func DeleteUserById(c echo.Context) error {
 	ip := c.RealIP()
 	model.InsertLog(ip, "UploadFoto", result.Data, 3)
 	return c.JSON(http.StatusOK, result)
+}
+
+func GetUserKTP(c echo.Context) error {
+	id := c.Param("id")
+
+	fmt.Println(id)
+	result, err := model.GetUserKTP(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+
+	fmt.Println(result.Data)
+
+	path, ok := result.Data.(string)
+	if !ok {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Data is not a valid file path"})
+	}
+
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+
+	return c.File(path)
+}
+
+func GetUserFoto(c echo.Context) error {
+	id := c.Param("id")
+
+	fmt.Println(id)
+	result, err := model.GetUserFoto(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+
+	fmt.Println(result.Data)
+
+	path, ok := result.Data.(string)
+	if !ok {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Data is not a valid file path"})
+	}
+
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+
+	return c.File(path)
 }

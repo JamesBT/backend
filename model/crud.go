@@ -2153,18 +2153,10 @@ func UpdateUser(user string) (Response, error) {
 	return res, nil
 }
 
-func UpdateUserWithKTP(user string) (Response, error) {
+func UpdateUserFull(filefoto *multipart.FileHeader, filektp *multipart.FileHeader, userid, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, no_telp string) (Response, error) {
 	var res Response
 
-	var dtUser = User{}
-
-	err := json.Unmarshal([]byte(user), &dtUser)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
+	userId, _ := strconv.Atoi(userid)
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -2184,11 +2176,78 @@ func UpdateUserWithKTP(user string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtUser.Username, dtUser.Nama_lengkap, dtUser.Alamat, dtUser.Jenis_kelamin, dtUser.Tgl_lahir, dtUser.Email, dtUser.No_telp, dtUser.Id)
+	result, err := stmt.Exec(username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, no_telp, userId)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
 		res.Data = err.Error()
+		return res, err
+	}
+
+	// tambah file foto profile dan ktp
+	// foto profil ======================================================
+	filefoto.Filename = userid + "_" + username + ".png"
+	pathFotoFile := "uploads/user/foto_profil/" + filefoto.Filename
+	//source
+	srcfoto, err := filefoto.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcfoto.Close()
+
+	// Destination
+	dstfoto, err := os.Create("uploads/user/foto_profil/" + filefoto.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstfoto, srcfoto); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstfoto.Close()
+
+	err = UpdateDataFotoPath("user", "foto_profil", pathFotoFile, "user", userId)
+	if err != nil {
+		return res, err
+	}
+
+	// ktp ======================================================
+	filektp.Filename = userid + "_" + username + ".png"
+	pathKtpFile := "uploads/user/ktp/" + filefoto.Filename
+	//source
+	srcktp, err := filektp.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcktp.Close()
+
+	// Destination
+	dstktp, err := os.Create("uploads/user/ktp/" + filefoto.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstktp, srcktp); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstktp.Close()
+
+	err = UpdateDataFotoPath("user", "ktp", pathKtpFile, "user", userId)
+	if err != nil {
 		return res, err
 	}
 
@@ -2197,6 +2256,109 @@ func UpdateUserWithKTP(user string) (Response, error) {
 	res.Data = result
 
 	defer db.DbClose(con)
+	return res, nil
+}
+
+func UpdateDataFotoPath(tabel string, kolom string, path string, kolom_id string, id int) error {
+	log.Println("mengubah status foto di DB")
+
+	// Open DB connection
+	con, err := db.DbConnection()
+	if err != nil {
+		log.Println("error: " + err.Error())
+		return err
+	}
+	defer db.DbClose(con) // Ensure the connection is closed
+
+	// Build the SQL query
+	query := fmt.Sprintf("UPDATE %s SET %s='%s' WHERE %s_id = %d", tabel, kolom, path, kolom_id, id)
+
+	// Execute the query
+	_, err = con.Exec(query) // Use Exec instead of Query since this is an UPDATE operation
+	if err != nil {
+		log.Println("error executing query: " + err.Error())
+		return err
+	}
+
+	fmt.Println("status foto di edit")
+	return nil
+}
+
+func GetUserKTP(id_user string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT ktp FROM user WHERE user_id = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	var ktpPath string
+	err = stmt.QueryRow(id_user).Scan(&ktpPath)
+	if err != nil {
+		res.Status = 404
+		res.Message = "KTP not found"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data ktp"
+	res.Data = ktpPath
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func GetUserFoto(id_user string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT foto_profil FROM user WHERE user_id = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	var fotoPath string
+	err = stmt.QueryRow(id_user).Scan(&fotoPath)
+	if err != nil {
+		res.Status = 404
+		res.Message = "Foto profil not found"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data ktp"
+	res.Data = fotoPath
+
+	defer db.DbClose(con)
+
 	return res, nil
 }
 
@@ -2971,29 +3133,4 @@ func UploadFile(file *multipart.FileHeader, id string, kolom_id string, folder s
 	res.Data = file.Filename
 
 	return res, nil
-}
-
-func UpdateDataFotoPath(tabel string, kolom string, path string, kolom_id string, id int) error {
-	log.Println("mengubah status foto di DB")
-
-	// Open DB connection
-	con, err := db.DbConnection()
-	if err != nil {
-		log.Println("error: " + err.Error())
-		return err
-	}
-	defer db.DbClose(con) // Ensure the connection is closed
-
-	// Build the SQL query
-	query := fmt.Sprintf("UPDATE %s SET %s='%s' WHERE %s_id = %d", tabel, kolom, path, kolom_id, id)
-
-	// Execute the query
-	_, err = con.Exec(query) // Use Exec instead of Query since this is an UPDATE operation
-	if err != nil {
-		log.Println("error executing query: " + err.Error())
-		return err
-	}
-
-	fmt.Println("status foto di edit")
-	return nil
 }

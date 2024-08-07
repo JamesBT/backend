@@ -22,6 +22,9 @@ func Init() *echo.Echo {
 	e.POST("/user/auth", controler.Login)
 	e.GET("/user/:id", controler.GetUserById)
 	e.PUT("/user", controler.UpdateUser)
+	e.PUT("/user/auth", controler.UpdateUserFull)
 	e.DELETE("/user/:id", controler.DeleteUserById)
+	e.GET("/user/ktp/:id", controler.GetUserKTP)
+	e.GET("/user/foto/:id", controler.GetUserKTP)
 	return e
 }

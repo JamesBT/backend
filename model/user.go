@@ -53,7 +53,7 @@ func Login(akun string) (Response, error) {
 	defer stmt.Close()
 
 	// cek apakah password benar atau tidak
-	query = "SELECT u.user_id,u.username,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,ud.status,ud.tipe,ud.first_login,ud.denied_by_admin FROM user u JOIN user_detail ud WHERE u.username = ? AND u.password = ?"
+	query = "SELECT u.user_id,u.username,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,u.ktp,ud.status,ud.tipe,ud.first_login,ud.denied_by_admin FROM user u JOIN user_detail ud WHERE u.username = ? AND u.password = ?"
 	stmt, err = con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -62,7 +62,7 @@ func Login(akun string) (Response, error) {
 		return res, err
 	}
 
-	err = stmt.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin)
+	err = stmt.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin)
 	if err != nil {
 		res.Status = 401
 		res.Message = "password salah"
@@ -143,6 +143,7 @@ func Login(akun string) (Response, error) {
 		"email":           loginUsr.Email,
 		"nomor_telepon":   loginUsr.No_telp,
 		"foto_profil":     loginUsr.Foto_profil,
+		"ktp":             loginUsr.Ktp,
 		"status":          loginUsr.Status,
 		"tipe":            loginUsr.Tipe,
 		"first_login":     loginUsr.First_login,
