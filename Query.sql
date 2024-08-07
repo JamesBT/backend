@@ -43,6 +43,21 @@ CREATE TABLE IF NOT EXISTS `asset` (
 
 -- Dumping data for table asetmanajemen.asset: ~0 rows (approximately)
 
+-- Dumping structure for table asetmanajemen.notification
+CREATE TABLE IF NOT EXISTS `notification` (
+  `notification_id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id_sender` int(11) NOT NULL DEFAULT 0,
+  `user_id_receiver` int(11) NOT NULL DEFAULT 0,
+  `notification_detail` text DEFAULT NULL,
+  PRIMARY KEY (`notification_id`),
+  KEY `user_id_sender` (`user_id_sender`),
+  KEY `user_id_receiver` (`user_id_receiver`),
+  CONSTRAINT `notification_user_id_receiver` FOREIGN KEY (`user_id_receiver`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `notification_user_id_sender` FOREIGN KEY (`user_id_sender`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Dumping data for table asetmanajemen.notification: ~0 rows (approximately)
+
 -- Dumping structure for table asetmanajemen.perusahaan
 CREATE TABLE IF NOT EXISTS `perusahaan` (
   `perusahaan_id` int(11) NOT NULL AUTO_INCREMENT,
@@ -60,18 +75,26 @@ CREATE TABLE IF NOT EXISTS `privilege` (
   `privilege_id` int(11) NOT NULL AUTO_INCREMENT,
   `nama_privilege` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`privilege_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asetmanajemen.privilege: ~0 rows (approximately)
+-- Dumping data for table asetmanajemen.privilege: ~3 rows (approximately)
+REPLACE INTO `privilege` (`privilege_id`, `nama_privilege`) VALUES
+	(1, 'testing123'),
+	(2, 'privilege2'),
+	(3, 'privilege3');
 
 -- Dumping structure for table asetmanajemen.role
 CREATE TABLE IF NOT EXISTS `role` (
   `role_id` int(11) NOT NULL AUTO_INCREMENT,
   `nama_role` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`role_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asetmanajemen.role: ~0 rows (approximately)
+-- Dumping data for table asetmanajemen.role: ~3 rows (approximately)
+REPLACE INTO `role` (`role_id`, `nama_role`) VALUES
+	(1, 'role1'),
+	(2, 'role2'),
+	(3, 'role3');
 
 -- Dumping structure for table asetmanajemen.surveyor
 CREATE TABLE IF NOT EXISTS `surveyor` (
@@ -137,11 +160,27 @@ CREATE TABLE IF NOT EXISTS `user` (
   `login_timestamp` datetime DEFAULT NULL,
   `ktp` varchar(225) DEFAULT NULL,
   PRIMARY KEY (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Dumping data for table asetmanajemen.user: ~1 rows (approximately)
 REPLACE INTO `user` (`user_id`, `username`, `password`, `nama_lengkap`, `alamat`, `jenis_kelamin`, `tanggal_lahir`, `email`, `nomor_telepon`, `foto_profil`, `created_at`, `deleted_at`, `updated_at`, `login_timestamp`, `ktp`) VALUES
-	(1, 'tes1', 'tes1', 'tes1', 'tes1', 'L', '2024-07-16', 'tes1@gmail.com', '08123456789', 'tes1', '2024-07-16 16:45:12', '2024-07-16 16:45:13', '2024-07-16 16:45:14', '2024-07-16 18:17:46', NULL);
+	(1, 'tes1', 'tes1', 'tes1', 'tes1', 'L', '2024-07-16', 'tes1@gmail.com', '08123456789', 'tes1', '2024-07-16 16:45:12', NULL, '2024-07-16 16:45:14', '2024-08-07 11:55:26', NULL),
+	(2, 'tes2_2', 'testing2', 'testing2_1', 'testing2_1', 'P', '2024-08-07', 'testing2_1@gmail.com', '08123456789', NULL, '2024-08-07 09:58:26', NULL, '2024-08-07 10:01:02', '2024-08-07 09:58:26', NULL);
+
+-- Dumping structure for table asetmanajemen.user_detail
+CREATE TABLE IF NOT EXISTS `user_detail` (
+  `user_detail_id` int(11) DEFAULT NULL,
+  `status` int(11) DEFAULT NULL,
+  `tipe` int(11) DEFAULT NULL,
+  `first_login` int(11) DEFAULT 1,
+  `denied_by_admin` int(11) DEFAULT 0,
+  KEY `user_detail_id` (`user_detail_id`),
+  CONSTRAINT `user_detail_id` FOREIGN KEY (`user_detail_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Dumping data for table asetmanajemen.user_detail: ~1 rows (approximately)
+REPLACE INTO `user_detail` (`user_detail_id`, `status`, `tipe`, `first_login`, `denied_by_admin`) VALUES
+	(1, 0, 1, 1, 0);
 
 -- Dumping structure for table asetmanajemen.user_privilege
 CREATE TABLE IF NOT EXISTS `user_privilege` (
@@ -153,9 +192,11 @@ CREATE TABLE IF NOT EXISTS `user_privilege` (
   KEY `Column 2` (`user_id`) USING BTREE,
   CONSTRAINT `FK_userprivilege_privilegeid` FOREIGN KEY (`privilege_id`) REFERENCES `privilege` (`privilege_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_userprivilege_userid` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asetmanajemen.user_privilege: ~0 rows (approximately)
+-- Dumping data for table asetmanajemen.user_privilege: ~1 rows (approximately)
+REPLACE INTO `user_privilege` (`user_privilege_id`, `privilege_id`, `user_id`) VALUES
+	(1, 1, 1);
 
 -- Dumping structure for table asetmanajemen.user_role
 CREATE TABLE IF NOT EXISTS `user_role` (
@@ -167,9 +208,11 @@ CREATE TABLE IF NOT EXISTS `user_role` (
   KEY `role_id` (`role_id`),
   CONSTRAINT `FK_userrole_roleid` FOREIGN KEY (`role_id`) REFERENCES `role` (`role_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_userrole_userid` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asetmanajemen.user_role: ~0 rows (approximately)
+-- Dumping data for table asetmanajemen.user_role: ~1 rows (approximately)
+REPLACE INTO `user_role` (`user_role_id`, `user_id`, `role_id`) VALUES
+	(1, 1, 1);
 
 /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
 /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;

@@ -13,17 +13,21 @@ type Barang struct {
 }
 
 type User struct {
-	Id            int    `json:"id"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
-	Nama_lengkap  string `json:"nama_lengkap"`
-	Alamat        string `json:"alamat"`
-	Jenis_kelamin string `json:"jenis_kelamin"`
-	Tgl_lahir     string `json:"tgl_lahir"`
-	Email         string `json:"email"`
-	No_telp       string `json:"no_telp"`
-	Foto_profil   string `json:"foto_profil"`
-	Ktp           string `json:"ktp"`
+	Id              int    `json:"id"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	Nama_lengkap    string `json:"nama_lengkap"`
+	Alamat          string `json:"alamat"`
+	Jenis_kelamin   string `json:"jenis_kelamin"`
+	Tgl_lahir       string `json:"tgl_lahir"`
+	Email           string `json:"email"`
+	No_telp         string `json:"no_telp"`
+	Foto_profil     string `json:"foto_profil"`
+	Ktp             string `json:"ktp"`
+	Status          int    `json:"status"`
+	Tipe            int    `json:"tipe"`
+	First_login     int    `json:"first_login"`
+	Denied_by_admin int    `json:"denied_by_admin"`
 }
 
 type Asset struct {

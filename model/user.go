@@ -53,7 +53,7 @@ func Login(akun string) (Response, error) {
 	defer stmt.Close()
 
 	// cek apakah password benar atau tidak
-	query = "SELECT user_id,username,nama_lengkap,alamat,jenis_kelamin,tanggal_lahir,email,nomor_telepon,foto_profil FROM user WHERE username = ? AND password = ?"
+	query = "SELECT u.user_id,u.username,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,ud.status,ud.tipe,ud.first_login,ud.denied_by_admin FROM user u JOIN user_detail ud WHERE u.username = ? AND u.password = ?"
 	stmt, err = con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -62,7 +62,7 @@ func Login(akun string) (Response, error) {
 		return res, err
 	}
 
-	err = stmt.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil)
+	err = stmt.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin)
 	if err != nil {
 		res.Status = 401
 		res.Message = "password salah"
@@ -134,19 +134,23 @@ func Login(akun string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil login"
 	res.Data = map[string]interface{}{
-		"id":             loginUsr.Id,
-		"username":       loginUsr.Username,
-		"nama_lengkap":   loginUsr.Nama_lengkap,
-		"alamat":         loginUsr.Alamat,
-		"jenis_kelamin":  loginUsr.Jenis_kelamin,
-		"tanggal_lahir":  loginUsr.Tgl_lahir,
-		"email":          loginUsr.Email,
-		"nomor_telepon":  loginUsr.No_telp,
-		"foto_profil":    loginUsr.Foto_profil,
-		"role_id":        roleId,
-		"role_nama":      roleName,
-		"privilege_id":   privilegeId,
-		"nama_privilege": privilegeName,
+		"id":              loginUsr.Id,
+		"username":        loginUsr.Username,
+		"nama_lengkap":    loginUsr.Nama_lengkap,
+		"alamat":          loginUsr.Alamat,
+		"jenis_kelamin":   loginUsr.Jenis_kelamin,
+		"tanggal_lahir":   loginUsr.Tgl_lahir,
+		"email":           loginUsr.Email,
+		"nomor_telepon":   loginUsr.No_telp,
+		"foto_profil":     loginUsr.Foto_profil,
+		"status":          loginUsr.Status,
+		"tipe":            loginUsr.Tipe,
+		"first_login":     loginUsr.First_login,
+		"denied_by_admin": loginUsr.Denied_by_admin,
+		"role_id":         roleId,
+		"role_nama":       roleName,
+		"privilege_id":    privilegeId,
+		"nama_privilege":  privilegeName,
 	}
 
 	defer db.DbClose(con)

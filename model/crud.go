@@ -3,7 +3,12 @@ package model
 import (
 	"TemplateProject/db"
 	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 )
 
@@ -2148,6 +2153,53 @@ func UpdateUser(user string) (Response, error) {
 	return res, nil
 }
 
+func UpdateUserWithKTP(user string) (Response, error) {
+	var res Response
+
+	var dtUser = User{}
+
+	err := json.Unmarshal([]byte(user), &dtUser)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE user SET username = ?, nama_lengkap = ?, alamat = ?, jenis_kelamin = ?, tanggal_lahir = ?, email = ?, nomor_telepon = ?,updated_at = NOW() WHERE user_id = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(dtUser.Username, dtUser.Nama_lengkap, dtUser.Alamat, dtUser.Jenis_kelamin, dtUser.Tgl_lahir, dtUser.Email, dtUser.No_telp, dtUser.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = result
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
 func DeleteUserById(id_user string) (Response, error) {
 	var res Response
 
@@ -2872,4 +2924,76 @@ func DeleteUserRole(userRole string) (Response, error) {
 	defer db.DbClose(con)
 
 	return res, nil
+}
+
+// fungsi tambahan
+func UploadFile(file *multipart.FileHeader, id string, kolom_id string, folder string) (Response, error) {
+	var res Response
+
+	log.Println("Upload File")
+	nId, _ := strconv.Atoi(id)
+	// file.Filename =
+	pathFile := "uploads/user/" + file.Filename
+	//source
+	src, err := file.Open()
+	if err != nil {
+		log.Println(err.Error())
+		log.Println("1")
+		fmt.Print("1")
+		return res, err
+	}
+	defer src.Close()
+
+	// Destination
+	dst, err := os.Create("uploads/" + folder + "/" + file.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dst, src); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dst.Close()
+
+	err = UpdateDataFotoPath(folder, "foto", pathFile, kolom_id, nId)
+	if err != nil {
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Sukses Upload File"
+	res.Data = file.Filename
+
+	return res, nil
+}
+
+func UpdateDataFotoPath(tabel string, kolom string, path string, kolom_id string, id int) error {
+	log.Println("mengubah status foto di DB")
+
+	// Open DB connection
+	con, err := db.DbConnection()
+	if err != nil {
+		log.Println("error: " + err.Error())
+		return err
+	}
+	defer db.DbClose(con) // Ensure the connection is closed
+
+	// Build the SQL query
+	query := fmt.Sprintf("UPDATE %s SET %s='%s' WHERE %s_id = %d", tabel, kolom, path, kolom_id, id)
+
+	// Execute the query
+	_, err = con.Exec(query) // Use Exec instead of Query since this is an UPDATE operation
+	if err != nil {
+		log.Println("error executing query: " + err.Error())
+		return err
+	}
+
+	fmt.Println("status foto di edit")
+	return nil
 }
