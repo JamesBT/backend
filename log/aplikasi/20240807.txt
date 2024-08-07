@@ -1,0 +1,14 @@
+{<2024-08-07 09:36:24>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 09:41:37>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 09:42:40>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 09:49:28>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 09:51:00>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 09:52:22>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 09:56:44>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 09:58:26>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 10:00:08>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 10:00:50>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 10:01:02>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 10:16:28>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 10:21:34>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-07 10:21:47>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}

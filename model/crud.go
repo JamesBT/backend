@@ -2122,7 +2122,7 @@ func UpdateUser(user string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE user SET username = ?, nama_lengkap = ?, alamat = ?, jenis_kelamin = ?, tanggal_lahir = ?, email = ?, nomor_telepon = ? WHERE user_id = ?"
+	query := "UPDATE user SET username = ?, nama_lengkap = ?, alamat = ?, jenis_kelamin = ?, tanggal_lahir = ?, email = ?, nomor_telepon = ?,updated_at = NOW() WHERE user_id = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -2148,18 +2148,8 @@ func UpdateUser(user string) (Response, error) {
 	return res, nil
 }
 
-func DeleteUser(user string) (Response, error) {
+func DeleteUserById(id_user string) (Response, error) {
 	var res Response
-
-	var dtUser = User{}
-
-	err := json.Unmarshal([]byte(user), &dtUser)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -2169,7 +2159,7 @@ func DeleteUser(user string) (Response, error) {
 		return res, err
 	}
 
-	query := "DELETE FROM user WHERE user_id = ?"
+	query := "UPDATE user SET deleted_at = NOW() WHERE user_id = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -2179,7 +2169,7 @@ func DeleteUser(user string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtUser.Id)
+	result, err := stmt.Exec(id_user)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -2379,6 +2369,7 @@ func GetUserPrivByUserId(user_id string) (Response, error) {
 
 func GetUserPrivDetailByUserId(user_id string) (Response, error) {
 	var res Response
+	var privileges []map[string]interface{}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -2399,26 +2390,47 @@ func GetUserPrivDetailByUserId(user_id string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	var temp_privilege_id int
-	var temp_user_id int
-	var temp_nama_privilege string
-
 	nId, _ := strconv.Atoi(user_id)
-	err = stmt.QueryRow(nId).Scan(&temp_user_id, &temp_privilege_id, &temp_nama_privilege)
+	rows, err := stmt.Query(nId)
+	// err = stmt.QueryRow(nId).Scan(&temp_user_id, &temp_privilege_id, &temp_nama_privilege)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
 		return res, err
 	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var temp_privilege_id, temp_user_id int
+		var temp_nama_privilege string
+
+		err := rows.Scan(&temp_user_id, &temp_privilege_id, &temp_nama_privilege)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		privilege := map[string]interface{}{
+			"user_id":        temp_user_id,
+			"privilege_id":   temp_privilege_id,
+			"nama_privilege": temp_nama_privilege,
+		}
+		privileges = append(privileges, privilege)
+	}
+
+	if len(privileges) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
-	res.Data = map[string]interface{}{
-		"user_id":        temp_user_id,
-		"privilege_id":   temp_privilege_id,
-		"nama_privilege": temp_nama_privilege,
-	}
+	res.Data = privileges
 
 	defer db.DbClose(con)
 	return res, nil

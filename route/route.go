@@ -21,6 +21,7 @@ func Init() *echo.Echo {
 	e.POST("/user", controler.SignUp)
 	e.POST("/user/auth", controler.Login)
 	e.GET("/user/:id", controler.GetUserById)
-
+	e.PUT("/user", controler.UpdateUser)
+	e.DELETE("/user/:id", controler.DeleteUserById)
 	return e
 }

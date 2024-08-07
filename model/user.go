@@ -33,7 +33,7 @@ func Login(akun string) (Response, error) {
 	}
 
 	// cek sudah terdaftar atau belum
-	query := "SELECT user_id FROM user WHERE username = ?"
+	query := "SELECT user_id FROM user WHERE username = ? AND deleted_at IS NULL"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -46,9 +46,9 @@ func Login(akun string) (Response, error) {
 	err = stmt.QueryRow(usr.Username).Scan(&userId)
 	if err != nil {
 		res.Status = 401
-		res.Message = "Pengguna belum terdaftar"
+		res.Message = "Pengguna belum terdaftar atau telah dihapus"
 		res.Data = err.Error()
-		return res, errors.New("pengguna belum terdaftar")
+		return res, errors.New("pengguna belum terdaftar atau telah dihapus")
 	}
 	defer stmt.Close()
 
@@ -72,6 +72,45 @@ func Login(akun string) (Response, error) {
 	defer stmt.Close()
 
 	// ambil role + privilege
+	getRoleQuery := "SELECT ur.role_id, r.nama_role FROM  user_role ur JOIN role r ON ur.role_id = r.role_id WHERE ur.user_id = ?;"
+	rolestmt, err := con.Prepare(getRoleQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rolestmt.Close()
+
+	var roleId int
+	var roleName string
+	err = rolestmt.QueryRow(userId).Scan(&roleId, &roleName)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mendapatkan role"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	getPrivilegeQuery := "SELECT pr.privilege_id, p.nama_privilege FROM user_privilege pr JOIN privilege p ON pr.privilege_id = p.privilege_id WHERE pr.user_id = ?;"
+	privilegestmt, err := con.Prepare(getPrivilegeQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer privilegestmt.Close()
+
+	var privilegeId int
+	var privilegeName string
+	err = privilegestmt.QueryRow(userId).Scan(&privilegeId, &privilegeName)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mendapatkan privilege"
+		res.Data = err.Error()
+		return res, err
+	}
 
 	// berhasil login => update timestamp terakhir login
 	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
@@ -95,15 +134,19 @@ func Login(akun string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil login"
 	res.Data = map[string]interface{}{
-		"id":            loginUsr.Id,
-		"username":      loginUsr.Username,
-		"nama_lengkap":  loginUsr.Nama_lengkap,
-		"alamat":        loginUsr.Alamat,
-		"jenis_kelamin": loginUsr.Jenis_kelamin,
-		"tanggal_lahir": loginUsr.Tgl_lahir,
-		"email":         loginUsr.Email,
-		"nomor_telepon": loginUsr.No_telp,
-		"foto_profil":   loginUsr.Foto_profil,
+		"id":             loginUsr.Id,
+		"username":       loginUsr.Username,
+		"nama_lengkap":   loginUsr.Nama_lengkap,
+		"alamat":         loginUsr.Alamat,
+		"jenis_kelamin":  loginUsr.Jenis_kelamin,
+		"tanggal_lahir":  loginUsr.Tgl_lahir,
+		"email":          loginUsr.Email,
+		"nomor_telepon":  loginUsr.No_telp,
+		"foto_profil":    loginUsr.Foto_profil,
+		"role_id":        roleId,
+		"role_nama":      roleName,
+		"privilege_id":   privilegeId,
+		"nama_privilege": privilegeName,
 	}
 
 	defer db.DbClose(con)
@@ -143,7 +186,7 @@ func SignUp(akun string) (Response, error) {
 		return res, err
 	}
 
-	var userId int
+	var userId int64
 	err = stmt.QueryRow(usr.Username).Scan(&userId)
 	if err == nil {
 		res.Status = 401
@@ -169,7 +212,7 @@ func SignUp(akun string) (Response, error) {
 	}
 	defer insertstmt.Close()
 
-	_, err = insertstmt.Exec(usr.Username, usr.Password, usr.Nama_lengkap, usr.Email, usr.No_telp)
+	result, err := insertstmt.Exec(usr.Username, usr.Password, usr.Nama_lengkap, usr.Email, usr.No_telp)
 	if err != nil {
 		res.Status = 401
 		res.Message = "insert user gagal"
@@ -178,8 +221,17 @@ func SignUp(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
+	userId, err = result.LastInsertId()
+	if err != nil {
+		res.Status = 500
+		res.Message = "gagal mendapatkan user ID"
+		res.Data = err.Error()
+		return res, err
+	}
+	usr.Id = int(userId)
+
 	// set waktu login dan created_at login => update timestamp terakhir login
-	updateQuery := "UPDATE user SET login_timestamp = NOW() AND created_at = NOW() WHERE user_id = ?"
+	updateQuery := "UPDATE user SET login_timestamp = NOW(), created_at = NOW() WHERE user_id = ?"
 	updatestmt, err := con.Prepare(updateQuery)
 	if err != nil {
 		res.Status = 401
@@ -189,7 +241,7 @@ func SignUp(akun string) (Response, error) {
 	}
 	defer updatestmt.Close()
 
-	_, err = updatestmt.Exec(userId)
+	_, err = updatestmt.Exec(usr.Id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "update login_timestamp gagal"
@@ -199,7 +251,6 @@ func SignUp(akun string) (Response, error) {
 
 	// hilangkan password buat global variabel
 	usr.Password = ""
-
 	res.Status = http.StatusOK
 	res.Message = "Berhasil buat user"
 	res.Data = usr
