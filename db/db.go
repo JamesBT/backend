@@ -12,11 +12,16 @@ import (
 )
 
 const (
+	// username = "asset_api"
+	// password = "-ETvslsBIda(3hTy"
+	// hostname = "leap.crossnet.co.id"
+	// port     = "3306"
+	// dbname   = "asset"
 	username = "root"
 	password = "root"
 	hostname = "localhost"
 	port     = "3307"
-	dbname   = "asetmanajemen"
+	dbname   = "asset"
 )
 
 var OpenCon = 0

@@ -26,5 +26,9 @@ func Init() *echo.Echo {
 	e.DELETE("/user/:id", controler.DeleteUserById)
 	e.GET("/user/ktp/:id", controler.GetUserKTP)
 	e.GET("/user/foto/:id", controler.GetUserKTP)
+
+	e.GET("/asset", controler.GetAllAsset)
+	e.POST("/asset", controler.TambahAsset)
+
 	return e
 }

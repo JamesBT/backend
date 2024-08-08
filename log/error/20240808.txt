@@ -1,0 +1,1 @@
+<2024-08-08 18:35:43>|| {REQUEST: uri: /aset, status: 404, ip:::1, Host:localhost:2681, ContentLength:, User-Agent:PostmanRuntime/7.41.0, Error:code=404, message=Not Found, Latency:0s, method:GET ,Protocol:HTTP/1.1, RequestId:, ResponseSize:0, custom-value: 42}

@@ -77,14 +77,23 @@ func GetUserById(c echo.Context) error {
 }
 
 func UpdateUser(c echo.Context) error {
-	akun, err := io.ReadAll(c.Request().Body)
+	userId := c.FormValue("id")
+	username := c.FormValue("username")
+	nama_lengkap := c.FormValue("nama_lengkap")
+	alamat := c.FormValue("alamat")
+	jenis_kelamin := c.FormValue("jenis_kelamin")
+	tanggal_lahir := c.FormValue("tanggal_lahir")
+	email := c.FormValue("email")
+	no_telp := c.FormValue("no_telp")
+	fileFoto, err := c.FormFile("fileFoto")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
-	result, err := model.UpdateUser(string(akun))
+	result, err := model.UpdateUser(fileFoto, userId, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, no_telp)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
+
 	ip := c.RealIP()
 	model.InsertLog(ip, "UploadFoto", result.Data, 3)
 	return c.JSON(http.StatusOK, result)
@@ -170,4 +179,28 @@ func GetUserFoto(c echo.Context) error {
 	model.InsertLog(ip, "UploadFoto", result.Data, 3)
 
 	return c.File(path)
+}
+
+func TambahAsset(c echo.Context) error {
+	aset, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.CreateAsset(string(aset))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllAsset(c echo.Context) error {
+	result, err := model.GetAllAsset()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
 }

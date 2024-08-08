@@ -24,10 +24,11 @@ type User struct {
 	No_telp         string `json:"no_telp"`
 	Foto_profil     string `json:"foto_profil"`
 	Ktp             string `json:"ktp"`
+	Kelas           int    `json:"kelas"`
 	Status          int    `json:"status"`
 	Tipe            int    `json:"tipe"`
-	First_login     int    `json:"first_login"`
-	Denied_by_admin int    `json:"denied_by_admin"`
+	First_login     string `json:"first_login"`
+	Denied_by_admin string `json:"denied_by_admin"`
 }
 
 type Asset struct {
@@ -36,7 +37,7 @@ type Asset struct {
 	Nama_legalitas    string  `json:"nama_legalitas"`
 	Nomor_legalitas   string  `json:"nomor_legalitas"`
 	Tipe              string  `json:"tipe"`
-	Nilai             int     `json:"nilai"`
+	Nilai             float32 `json:"nilai"`
 	Luas              float32 `json:"luas"`
 	Titik_koordinat   string  `json:"titik_koordinat"`
 	Batas_koordinat   string  `json:"batas_koordinat"`
