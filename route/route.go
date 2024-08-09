@@ -30,5 +30,7 @@ func Init() *echo.Echo {
 	e.GET("/asset", controler.GetAllAsset)
 	e.POST("/asset", controler.TambahAsset)
 
+	e.POST("/surveyor", controler.SignUpSurveyor)
+	e.POST("/surveyor/auth", controler.LoginSurveyor)
 	return e
 }

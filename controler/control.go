@@ -204,3 +204,31 @@ func GetAllAsset(c echo.Context) error {
 	model.InsertLog(ip, "UploadFoto", result.Data, 3)
 	return c.JSON(http.StatusOK, result)
 }
+
+func LoginSurveyor(c echo.Context) error {
+	akun, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.LoginSurveyor(string(akun))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func SignUpSurveyor(c echo.Context) error {
+	akun, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.SignUpSurveyor(string(akun))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}

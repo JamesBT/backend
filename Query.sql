@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS `asset` (
   PRIMARY KEY (`id_asset_parent`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.asset: ~0 rows (approximately)
+-- Dumping data for table asset.asset: ~2 rows (approximately)
 REPLACE INTO `asset` (`id_asset_parent`, `nama`, `nama_legalitas`, `nomor_legalitas`, `tipe`, `nilai`, `luas`, `titik_koordinat`, `batas_koordinat`, `kondisi`, `id_asset_child`, `alamat`, `status_pengecekan`, `status_verifikasi`, `hak_akses`, `status_asset`, `masa_sewa`) VALUES
 	(1, 'tes1', 'tes1', 'tes1', 'L', 1000000, 100, '-7.27290454460171, 112.74271229250712', '-7.272567138080667, 112.74277687674497', 'bagus', '', 'Jl. Panglima Sudirman No.101-103, Embong Kaliasin, Kec. Genteng, Surabaya, Jawa Timur 60271', 'N', 'N', '', 'T', NULL),
 	(2, 'tes2', 'tes2', 'tes2', 'L', 1000000, 100, '-7.27290454460171, 112.74271229250712', '-7.272567138080667, 112.74277687674497', 'bagus', '', 'ini testing ke 2', 'N', 'N', '', 'T', NULL);
@@ -217,19 +217,19 @@ REPLACE INTO `user` (`user_id`, `username`, `password`, `nama_lengkap`, `alamat`
 -- Dumping structure for table asset.user_detail
 CREATE TABLE IF NOT EXISTS `user_detail` (
   `user_detail_id` int(11) DEFAULT NULL,
-  `kelas` int(11) NOT NULL,
+  `user_kelas_id` int(11) NOT NULL,
   `status` int(11) DEFAULT NULL,
   `tipe` int(11) DEFAULT NULL,
   `first_login` enum('Y','N') NOT NULL DEFAULT 'Y',
   `denied_by_admin` enum('Y','N') NOT NULL DEFAULT 'N',
   KEY `user_detail_id` (`user_detail_id`),
-  KEY `kelas` (`kelas`),
+  KEY `kelas` (`user_kelas_id`) USING BTREE,
   CONSTRAINT `user_detail_id` FOREIGN KEY (`user_detail_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `user_kelas_id` FOREIGN KEY (`kelas`) REFERENCES `kelas` (`kelas_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  CONSTRAINT `user_kelas_id` FOREIGN KEY (`user_kelas_id`) REFERENCES `kelas` (`kelas_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.user_detail: ~3 rows (approximately)
-REPLACE INTO `user_detail` (`user_detail_id`, `kelas`, `status`, `tipe`, `first_login`, `denied_by_admin`) VALUES
+-- Dumping data for table asset.user_detail: ~4 rows (approximately)
+REPLACE INTO `user_detail` (`user_detail_id`, `user_kelas_id`, `status`, `tipe`, `first_login`, `denied_by_admin`) VALUES
 	(1, 1, 1, 8, 'Y', 'N'),
 	(2, 1, 1, 8, 'Y', 'N'),
 	(3, 1, 1, 8, 'Y', 'N'),
