@@ -17,11 +17,16 @@ const (
 	// hostname = "leap.crossnet.co.id"
 	// port     = "3306"
 	// dbname   = "asset"
-	username = "root"
-	password = "root"
-	hostname = "localhost"
-	port     = "3307"
+	username = "asset_admin"
+	password = "JkRiCWLgkf(k.Qo2"
+	hostname = "leap.crossnet.co.id"
+	port     = "3306"
 	dbname   = "asset"
+	// username = "root"
+	// password = "root"
+	// hostname = "localhost"
+	// port     = "3307"
+	// dbname   = "asset"
 )
 
 var OpenCon = 0
