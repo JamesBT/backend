@@ -132,9 +132,8 @@ func UpdateDataFoto(tabel string, kolom string, id int) error {
 		log.Println("error: " + err.Error())
 		return err
 	}
-	var query string
 
-	query = fmt.Sprintf("UPDATE %s SET %s='%s' where id = %d", tabel, kolom, "ada", id)
+	var query string = fmt.Sprintf("UPDATE %s SET %s='%s' where id = %d", tabel, kolom, "ada", id)
 
 	rows, err := con.Query(query)
 	defer rows.Close()

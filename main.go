@@ -3,12 +3,13 @@ package main
 import (
 	"TemplateProject/route"
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 func createFileLog(namFile string) {
@@ -131,5 +132,5 @@ func main() {
 	//if err := s.ListenAndServeTLS("", ""); err != http.ErrServerClosed {
 	//	e.Logger.Fatal(err)
 	//}
-	e.Logger.Fatal(e.Start(":2681"))
+	e.Logger.Fatal(e.Start(":1762"))
 }

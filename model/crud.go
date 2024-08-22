@@ -16,17 +16,8 @@ import (
 
 // ini untuk crud 10 tabel aja
 // CRUD aset ============================================================================
-func CreateAsset(aset string) (Response, error) {
+func CreateAsset(filelegalitas *multipart.FileHeader, suratkuasa *multipart.FileHeader, nama, perusahaan_id, tipe, nomorlegalitas, status, alamat, kondisi, koordinat, batas_koordinat, luas, nilai string) (Response, error) {
 	var res Response
-	var dtAset = Asset{}
-
-	err := json.Unmarshal([]byte(aset), &dtAset)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -36,7 +27,7 @@ func CreateAsset(aset string) (Response, error) {
 		return res, err
 	}
 
-	query := "INSERT INTO asset (nama, nama_legalitas, nomor_legalitas, tipe, nilai, luas, titik_koordinat, batas_koordinat, kondisi, alamat) VALUES (?,?,?,?,?,?,?,?,?,?)"
+	query := "INSERT INTO asset (perusahaan_id, nama, tipe, nomor_legalitas, status_asset, alamat, kondisi, titik_koordinat, batas_koordinat, luas, nilai, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -46,32 +37,231 @@ func CreateAsset(aset string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtAset.Nama, dtAset.Nama_legalitas, dtAset.Nomor_legalitas, dtAset.Tipe, dtAset.Nilai, dtAset.Luas, dtAset.Titik_koordinat, dtAset.Batas_koordinat, dtAset.Kondisi, dtAset.Alamat)
+	result, err := stmt.Exec(perusahaan_id, nama, tipe, nomorlegalitas, status, alamat, kondisi, koordinat, batas_koordinat, luas, nilai)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
 		return res, err
 	}
+
 	lastId, err := result.LastInsertId()
 	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	// tambah filelegalitas
+	//source
+	srclegalitas, err := filelegalitas.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srclegalitas.Close()
+
+	tempid := int(lastId)
+	_tempid := strconv.Itoa(tempid)
+	// Destination
+	filelegalitas.Filename = _tempid + "_" + perusahaan_id + "_" + filelegalitas.Filename
+	pathFileLegalitas := "uploads/asset/file_legalitas/" + filelegalitas.Filename
+	dstlegalitas, err := os.Create("uploads/asset/file_legalitas/" + filelegalitas.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstlegalitas, srclegalitas); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstlegalitas.Close()
+
+	err = UpdateDataFotoPath("asset", "file_legalitas", pathFileLegalitas, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	// tambah suratkuasa
+	//source
+	srcsuratkuasa, err := suratkuasa.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcsuratkuasa.Close()
+
+	// Destination
+	suratkuasa.Filename = _tempid + "_" + perusahaan_id + "_" + suratkuasa.Filename
+	pathFileSuratKuasa := "uploads/asset/surat_kuasa/" + suratkuasa.Filename
+	dstsuratkuasa, err := os.Create("uploads/asset/surat_kuasa/" + suratkuasa.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstsuratkuasa, srcsuratkuasa); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstsuratkuasa.Close()
+
+	err = UpdateDataFotoPath("asset", "surat_kuasa", pathFileSuratKuasa, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	tempaset, _ := GetAssetById(string(tempid))
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil memasukkan data"
+	res.Data = tempaset
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func CreateAssetChild(filelegalitas *multipart.FileHeader, suratkuasa *multipart.FileHeader, parent_id, nama, perusahaan_id, tipe, nomorlegalitas, status, alamat, kondisi, koordinat, batas_koordinat, luas, nilai string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
 		res.Status = 401
-		res.Message = "Last Id gagal"
+		res.Message = "gagal membuka database"
 		res.Data = err.Error()
 		return res, err
 	}
-	dtAset.Id_asset_parent = int(lastId)
-	res, err = GetAssetById(strconv.Itoa(dtAset.Id_asset_parent))
 
+	query := "INSERT INTO asset (id_asset_parent, perusahaan_id, nama, tipe, nomor_legalitas, status_asset, alamat, kondisi, titik_koordinat, batas_koordinat, luas, nilai, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
+	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
-		res.Message = "Ambil data berdasarkan id gagal"
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(parent_id, perusahaan_id, nama, tipe, nomorlegalitas, status, alamat, kondisi, koordinat, batas_koordinat, luas, nilai)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	lastId, err := result.LastInsertId()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	// tambah filelegalitas
+	//source
+	srclegalitas, err := filelegalitas.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srclegalitas.Close()
+
+	// Destination
+
+	tempid := int(lastId)
+	_tempid := strconv.Itoa(tempid)
+	filelegalitas.Filename = _tempid + "_" + perusahaan_id + "_" + filelegalitas.Filename
+	pathFileLegalitas := "uploads/asset/file_legalitas/" + filelegalitas.Filename
+	dstlegalitas, err := os.Create("uploads/asset/file_legalitas/" + filelegalitas.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstlegalitas, srclegalitas); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstlegalitas.Close()
+
+	err = UpdateDataFotoPath("asset", "file_legalitas", pathFileLegalitas, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	// tambah suratkuasa
+	//source
+	srcsuratkuasa, err := suratkuasa.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcsuratkuasa.Close()
+
+	// Destination
+	suratkuasa.Filename = _tempid + "_" + perusahaan_id + "_" + suratkuasa.Filename
+	pathFileSuratKuasa := "uploads/asset/surat_kuasa/" + suratkuasa.Filename
+	dstsuratkuasa, err := os.Create("uploads/asset/surat_kuasa/" + suratkuasa.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstsuratkuasa, srcsuratkuasa); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstsuratkuasa.Close()
+
+	err = UpdateDataFotoPath("asset", "surat_kuasa", pathFileSuratKuasa, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	templastid := int(lastId)
+	// update parent jadi punya child
+	queryupdate := "UPDATE asset SET id_asset_child = ? WHERE id_asset = ?"
+	stmtupdate, err := con.Prepare(queryupdate)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtupdate.Close()
+
+	_, err = stmtupdate.Exec(templastid, parent_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tempaset, err := GetAssetById(_tempid)
+	if err != nil {
+		res.Status = 401
+		res.Message = "get aset by id gagal"
 		res.Data = err.Error()
 		return res, err
 	}
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil memasukkan data"
+	res.Data = tempaset
 
 	defer db.DbClose(con)
 	return res, nil
@@ -109,9 +299,11 @@ func GetAllAsset() (Response, error) {
 	}
 	defer result.Close()
 	var masaSewa sql.NullTime
+	var deleteAt sql.NullTime
+	var idAssetParent, idAssetChild, idJoin, idPerusahaan sql.NullInt32
 
 	for result.Next() {
-		err = result.Scan(&dtAset.Id_asset_parent, &dtAset.Nama, &dtAset.Nama_legalitas, &dtAset.Nomor_legalitas, &dtAset.Tipe, &dtAset.Nilai, &dtAset.Luas, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Kondisi, &dtAset.Id_asset_child, &dtAset.Alamat, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Hak_akses, &dtAset.Status_asset, &masaSewa)
+		err = result.Scan(&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &idPerusahaan, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &dtAset.Usage, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
 		if err != nil {
 			res.Status = 401
 			res.Message = "rows scan"
@@ -123,6 +315,32 @@ func GetAllAsset() (Response, error) {
 			dtAset.Masa_sewa = masaSewa.Time.Format("2024-08-08")
 		} else {
 			dtAset.Masa_sewa = ""
+		}
+
+		if deleteAt.Valid {
+			dtAset.Deleted_at = deleteAt.Time.Format("2024-08-08")
+		} else {
+			dtAset.Deleted_at = ""
+		}
+		if idAssetParent.Valid {
+			dtAset.Id_asset_parent = int(idAssetParent.Int32)
+		} else {
+			dtAset.Id_asset_parent = 0
+		}
+		if idAssetChild.Valid {
+			dtAset.Id_asset_child = strconv.Itoa(int(idAssetChild.Int32))
+		} else {
+			dtAset.Id_asset_child = ""
+		}
+		if idJoin.Valid {
+			dtAset.Id_join = int(idJoin.Int32)
+		} else {
+			dtAset.Id_join = 0
+		}
+		if idPerusahaan.Valid {
+			dtAset.Id_perusahaan = int(idPerusahaan.Int32)
+		} else {
+			dtAset.Id_perusahaan = 0
 		}
 		arrAset = append(arrAset, dtAset)
 	}
@@ -147,7 +365,7 @@ func GetAssetById(aset_id string) (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT * FROM asset WHERE id_asset_parent = ?"
+	query := "SELECT * FROM asset WHERE id_asset = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -156,10 +374,12 @@ func GetAssetById(aset_id string) (Response, error) {
 		return res, err
 	}
 	defer stmt.Close()
+
 	nId, _ := strconv.Atoi(aset_id)
 	var masaSewa sql.NullTime
-	fmt.Println("ambil data aset berdasarkan id", nId)
-	err = stmt.QueryRow(nId).Scan(&dtAset.Id_asset_parent, &dtAset.Nama, &dtAset.Nama_legalitas, &dtAset.Nomor_legalitas, &dtAset.Tipe, &dtAset.Nilai, &dtAset.Luas, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Kondisi, &dtAset.Id_asset_child, &dtAset.Alamat, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Hak_akses, &dtAset.Status_asset, &masaSewa)
+	var deleteAt sql.NullTime
+	var idAssetParent, idAssetChild, idJoin sql.NullInt32
+	err = stmt.QueryRow(nId).Scan(&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Id_perusahaan, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &dtAset.Usage, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -173,9 +393,222 @@ func GetAssetById(aset_id string) (Response, error) {
 	} else {
 		dtAset.Masa_sewa = ""
 	}
+	if deleteAt.Valid {
+		dtAset.Deleted_at = deleteAt.Time.Format("2024-08-08")
+	} else {
+		dtAset.Deleted_at = ""
+	}
+	if idAssetParent.Valid {
+		dtAset.Id_asset_parent = int(idAssetParent.Int32)
+	} else {
+		dtAset.Id_asset_parent = 0
+	}
+	if idAssetChild.Valid {
+		dtAset.Id_asset_child = strconv.Itoa(int(idAssetChild.Int32))
+	} else {
+		dtAset.Id_asset_child = ""
+	}
+	if idJoin.Valid {
+		dtAset.Id_join = int(idJoin.Int32)
+	} else {
+		dtAset.Id_join = 0
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
 	res.Data = dtAset
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAssetDetailedById(aset_id string) (Response, error) {
+	var res Response
+
+	fmt.Println("get aset detailed by id")
+	// ambil data parent
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	dtAset, err := fetchAssetDetailed(con, aset_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Failed to fetch asset details"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtAset
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
+	var dtAset Asset
+	fmt.Println(aset_id)
+	query := "SELECT id_asset, id_asset_parent, id_asset_child, id_join, perusahaan_id, nama, tipe, nomor_legalitas, file_legalitas, status_asset, surat_kuasa, alamat, kondisi, titik_koordinat, batas_koordinat, luas, nilai, `usage`, status_pengecekan, status_verifikasi, status_publik, hak_akses, masa_sewa, created_at, deleted_at FROM asset WHERE id_asset = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		return dtAset, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(aset_id)
+	var masaSewa sql.NullTime
+	var deleteAt sql.NullTime
+	var idAssetParent, idAssetChild, idJoin sql.NullInt32
+
+	err = stmt.QueryRow(nId).Scan(
+		&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Id_perusahaan,
+		&dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset,
+		&dtAset.Surat_kuasa, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat,
+		&dtAset.Luas, &dtAset.Nilai, &dtAset.Usage, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses,
+		&masaSewa, &dtAset.Created_at, &deleteAt,
+	)
+	if err != nil {
+		return dtAset, err
+	}
+
+	// Format nullable times
+	if masaSewa.Valid {
+		dtAset.Masa_sewa = masaSewa.Time.Format("2006-01-02")
+	} else {
+		dtAset.Masa_sewa = ""
+	}
+	if deleteAt.Valid {
+		dtAset.Deleted_at = deleteAt.Time.Format("2006-01-02")
+	} else {
+		dtAset.Deleted_at = ""
+	}
+	if idAssetParent.Valid {
+		dtAset.Id_asset_parent = int(idAssetParent.Int32)
+	} else {
+		dtAset.Id_asset_parent = 0
+	}
+	if idAssetChild.Valid {
+		dtAset.Id_asset_child = strconv.Itoa(int(idAssetChild.Int32))
+	} else {
+		dtAset.Id_asset_child = ""
+	}
+	if idJoin.Valid {
+		dtAset.Id_join = int(idJoin.Int32)
+	} else {
+		dtAset.Id_join = 0
+	}
+
+	childQuery := "SELECT id_asset FROM asset WHERE id_asset_parent = ?"
+	rows, err := con.Query(childQuery, dtAset.Id_asset)
+	if err != nil {
+		return dtAset, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var childId int
+		if err := rows.Scan(&childId); err != nil {
+			return dtAset, err
+		}
+
+		childAset, err := fetchAssetDetailed(con, strconv.Itoa(childId))
+		if err != nil {
+			return dtAset, err
+		}
+		dtAset.ChildAssets = append(dtAset.ChildAssets, childAset)
+	}
+
+	// untuk gambar
+	imageQuery := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
+	imageRows, err := con.Query(imageQuery, dtAset.Id_asset)
+	if err != nil {
+		return dtAset, err
+	}
+	defer imageRows.Close()
+
+	for imageRows.Next() {
+		var linkGambar string
+		if err := imageRows.Scan(&linkGambar); err != nil {
+			return dtAset, err
+		}
+		dtAset.LinkGambar = append(dtAset.LinkGambar, linkGambar)
+	}
+
+	// untuk tags
+	tagQuery := `SELECT t.nama FROM asset_tags at
+		JOIN tags t ON at.id_tags = t.id
+		WHERE at.id_asset = ?`
+	tagRows, err := con.Query(tagQuery, dtAset.Id_asset)
+	if err != nil {
+		return dtAset, err
+	}
+	defer tagRows.Close()
+
+	for tagRows.Next() {
+		var tagName string
+		if err := tagRows.Scan(&tagName); err != nil {
+			return dtAset, err
+		}
+		dtAset.TagsAssets = append(dtAset.TagsAssets, tagName)
+	}
+
+	return dtAset, nil
+}
+
+func UbahVisibilitasAset(aset_id, input string) (Response, error) {
+	var res Response
+
+	type temp_visibilitas_asset_acc struct {
+		Visibilitas string `json:"visibilitas"`
+	}
+
+	var visibilitasAsset temp_visibilitas_asset_acc
+	err := json.Unmarshal([]byte(input), &visibilitasAsset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal unmarshal JSON"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE asset SET `status_publik`= ? WHERE `id_asset` = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(aset_id)
+	_, err = stmt.Exec(visibilitasAsset.Visibilitas, nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tempaset, _ := GetAssetById(aset_id)
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = tempaset
 
 	defer db.DbClose(con)
 	return res, nil
@@ -211,14 +644,28 @@ func GetAssetByName(nama_aset string) (Response, error) {
 		return res, err
 	}
 	defer rows.Close()
+
 	for rows.Next() {
 		var dtAset Asset
-		err := rows.Scan(&dtAset.Id_asset_parent, &dtAset.Nama, &dtAset.Nama_legalitas, &dtAset.Nomor_legalitas, &dtAset.Tipe, &dtAset.Nilai, &dtAset.Luas, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Kondisi, &dtAset.Id_asset_child, &dtAset.Alamat, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Hak_akses, &dtAset.Status_asset, &dtAset.Masa_sewa)
+		var masaSewa sql.NullTime
+		var deleteAt sql.NullTime
+		err := rows.Scan(&dtAset.Id_asset, &dtAset.Id_asset_parent, &dtAset.Id_asset_child, &dtAset.Id_perusahaan, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
 		if err != nil {
 			res.Status = 401
 			res.Message = "scan gagal"
 			res.Data = err.Error()
 			return res, err
+		}
+
+		if masaSewa.Valid {
+			dtAset.Masa_sewa = masaSewa.Time.Format("2024-08-08")
+		} else {
+			dtAset.Masa_sewa = ""
+		}
+		if deleteAt.Valid {
+			dtAset.Deleted_at = deleteAt.Time.Format("2024-08-08")
+		} else {
+			dtAset.Deleted_at = ""
 		}
 		dtAsets = append(dtAsets, dtAset)
 	}
@@ -240,53 +687,6 @@ func GetAssetByName(nama_aset string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
 	res.Data = dtAsets
-
-	defer db.DbClose(con)
-	return res, nil
-}
-
-func UpdateAssetById(aset string) (Response, error) {
-	var res Response
-
-	var dtAset = Asset{}
-
-	err := json.Unmarshal([]byte(aset), &dtAset)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	query := "UPDATE asset SET nama = ?, nama_legalitas = ?, nomor_legalitas = ?, tipe = ?, nilai = ?, luas = ?, titik_koordinat = ?, batas_koordinat = ?, kondisi = ?, id_asset_child = ?, alamat = ?, status_pengecekan = ?, status_verifikasi = ?, hak_akses = ?, status_asset = ?, masa_sewa = ? WHERE id_asset_parent = ?"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
-
-	result, err := stmt.Exec(dtAset.Nama, dtAset.Nama_legalitas, dtAset.Nomor_legalitas, dtAset.Tipe, dtAset.Nilai, dtAset.Luas, dtAset.Titik_koordinat, dtAset.Batas_koordinat, dtAset.Kondisi, dtAset.Id_asset_child, dtAset.Alamat, dtAset.Status_pengecekan, dtAset.Status_verifikasi, dtAset.Hak_akses, dtAset.Status_asset, dtAset.Masa_sewa, dtAset.Id_asset_parent)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	res.Status = http.StatusOK
-	res.Message = "Berhasil mengupdate data"
-	res.Data = result
 
 	defer db.DbClose(con)
 	return res, nil
@@ -341,17 +741,9 @@ func DeleteAssetById(aset string) (Response, error) {
 }
 
 // CRUD perusahaan ============================================================================
-func CreatePerusahaan(perusahaan string) (Response, error) {
+func CreatePerusahaan(file_kepemilikan *multipart.FileHeader, file_perusahaan *multipart.FileHeader, userid, nama, username, lokasi, tipe, modal, deskripsi string) (Response, error) {
 	var res Response
 	var dtPerusahaan = Perusahaan{}
-
-	err := json.Unmarshal([]byte(perusahaan), &dtPerusahaan)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -361,7 +753,7 @@ func CreatePerusahaan(perusahaan string) (Response, error) {
 		return res, err
 	}
 
-	query := "INSERT INTO perusahaan (user_id, sertifikat_perusahaan) VALUES (?,?)"
+	query := "INSERT INTO perusahaan (name, username, lokasi, tipe, modal_awal, deskripsi) VALUES (?,?,?,?,?,?)"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -371,13 +763,14 @@ func CreatePerusahaan(perusahaan string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtPerusahaan.User_id, dtPerusahaan.Sertifikat_perusahaan)
+	result, err := stmt.Exec(nama, username, lokasi, tipe, modal, deskripsi)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
 		return res, err
 	}
+
 	lastId, err := result.LastInsertId()
 	if err != nil {
 		res.Status = 401
@@ -385,7 +778,102 @@ func CreatePerusahaan(perusahaan string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	dtPerusahaan.Perusahaan_id = int(lastId)
+	fmt.Println("lastid", lastId)
+	// insert file kepemilikan
+	templastid := strconv.Itoa(int(lastId))
+	file_kepemilikan.Filename = templastid + "_" + file_kepemilikan.Filename
+	pathFile := "uploads/perusahaan/file_kepemilikan/" + file_kepemilikan.Filename
+	//source
+	srcfoto, err := file_kepemilikan.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcfoto.Close()
+
+	// Destination
+	dstfoto, err := os.Create("uploads/perusahaan/file_kepemilikan/" + file_kepemilikan.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstfoto, srcfoto); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstfoto.Close()
+
+	err = UpdateDataFotoPath("perusahaan", "dokumen_kepemilikan", pathFile, "perusahaan_id", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	// insert file perusahaan
+	file_perusahaan.Filename = templastid + "_" + file_perusahaan.Filename
+	pathFilePerusahaan := "uploads/perusahaan/file_perusahaan/" + file_perusahaan.Filename
+	//source
+	srcfotoPerusahaan, err := file_perusahaan.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcfoto.Close()
+
+	// Destination
+	dstfotoPerusahaan, err := os.Create("uploads/perusahaan/file_perusahaan/" + file_perusahaan.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstfotoPerusahaan, srcfotoPerusahaan); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstfoto.Close()
+
+	err = UpdateDataFotoPath("perusahaan", "dokumen_perusahaan", pathFilePerusahaan, "perusahaan_id", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	dtPerusahaan.Id = int(lastId)
+	dtPerusahaan.Nama = nama
+	dtPerusahaan.Username = username
+	dtPerusahaan.Lokasi = lokasi
+	dtPerusahaan.Tipe = tipe
+	dtPerusahaan.Dokumen_kepemilikan = pathFile
+	dtPerusahaan.Dokumen_perusahaan = pathFilePerusahaan
+	dtPerusahaan.Modal = modal
+	dtPerusahaan.Deskripsi = deskripsi
+
+	// masukin ke user_perusahaan
+	queryuser := "INSERT INTO user_perusahaan (id_user,id_perusahaan) VALUES (?,?)"
+	stmtuser, err := con.Prepare(queryuser)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtuser.Close()
+
+	_, err = stmtuser.Exec(userid, dtPerusahaan.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil memasukkan data"
@@ -395,6 +883,124 @@ func CreatePerusahaan(perusahaan string) (Response, error) {
 	return res, nil
 }
 
+func GetAllPerusahaanUnverified() (Response, error) {
+	var res Response
+	var arrPerusahaan = []Perusahaan{}
+	var dtPerusahaan Perusahaan
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT perusahaan_id, status, name, username, lokasi, tipe, dokumen_kepemilikan, dokumen_perusahaan, modal_awal, deskripsi, created_at FROM perusahaan WHERE status = 'N'"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+	for result.Next() {
+		err = result.Scan(&dtPerusahaan.Id, &dtPerusahaan.Status, &dtPerusahaan.Nama, &dtPerusahaan.Username, &dtPerusahaan.Lokasi, &dtPerusahaan.Tipe, &dtPerusahaan.Dokumen_kepemilikan, &dtPerusahaan.Dokumen_perusahaan, &dtPerusahaan.Modal, &dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+		arrPerusahaan = append(arrPerusahaan, dtPerusahaan)
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrPerusahaan
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetPerusahaanByUserId(user_id string) (Response, error) {
+	var res Response
+	var arrPerusahaan = []Perusahaan{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+		SELECT p.perusahaan_id, p.status, p.name, p.username, p.lokasi, p.tipe, 
+		       p.dokumen_kepemilikan, p.dokumen_perusahaan, p.modal_awal, p.deskripsi, p.created_at
+		FROM perusahaan p
+		JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
+		WHERE up.id_user = ? AND p.status = 'N'
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(user_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Failed to execute query"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dtPerusahaan Perusahaan
+		err = rows.Scan(
+			&dtPerusahaan.Id, &dtPerusahaan.Status, &dtPerusahaan.Nama, &dtPerusahaan.Username,
+			&dtPerusahaan.Lokasi, &dtPerusahaan.Tipe, &dtPerusahaan.Dokumen_kepemilikan,
+			&dtPerusahaan.Dokumen_perusahaan, &dtPerusahaan.Modal, &dtPerusahaan.Deskripsi,
+			&dtPerusahaan.CreatedAt,
+		)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Failed to scan row"
+			res.Data = err.Error()
+			return res, err
+		}
+		arrPerusahaan = append(arrPerusahaan, dtPerusahaan)
+	}
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "Error during row iteration"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrPerusahaan
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+/**
 func GetAllPerusahaan() (Response, error) {
 	var res Response
 	var arrPerusahaan = []Perusahaan{}
@@ -577,7 +1183,7 @@ func DeletePerusahaanById(perusahaan string) (Response, error) {
 
 	return res, nil
 }
-
+**/
 // CRUD privilege ============================================================================
 func CreatePrivilege(hakakses string) (Response, error) {
 	var res Response
@@ -877,6 +1483,71 @@ func DeletePrivilegeById(hakakses string) (Response, error) {
 
 	defer db.DbClose(con)
 
+	return res, nil
+}
+
+func GetAllPerusahaanDetailed() (Response, error) {
+	var res Response
+	var dtPerusahaan = []UserPerusahaan{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT p.perusahaan_id, p.name, COUNT(DISTINCT up.id_user) AS user_count, COUNT(DISTINCT tr.id_transaksi_jual_sewa) AS transaction_count FROM  perusahaan p LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan LEFT JOIN transaction_request tr ON p.perusahaan_id = tr.perusahaan_id GROUP BY p.perusahaan_id;"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var _dtUserPerusahaan UserPerusahaan
+		err := rows.Scan(&_dtUserPerusahaan.Perusahaan_id, &_dtUserPerusahaan.Name, &_dtUserPerusahaan.UserCount, &_dtUserPerusahaan.TransactionCount)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		dtPerusahaan = append(dtPerusahaan, _dtUserPerusahaan)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(dtPerusahaan) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtPerusahaan
+
+	defer db.DbClose(con)
 	return res, nil
 }
 
@@ -1183,11 +1854,13 @@ func DeleteRoleById(peran string) (Response, error) {
 }
 
 // CRUD surveyor ============================================================================
-func CreateSurveyor(inspektur string) (Response, error) {
+func LoginSurveyor(akun string) (Response, error) {
 	var res Response
-	var dtSurveyor = Surveyor{}
 
-	err := json.Unmarshal([]byte(inspektur), &dtSurveyor)
+	var usr = User{}
+	var loginUsr = User{}
+
+	err := json.Unmarshal([]byte(akun), &usr)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal decode json"
@@ -1203,7 +1876,8 @@ func CreateSurveyor(inspektur string) (Response, error) {
 		return res, err
 	}
 
-	query := "INSERT INTO surveyor (lokasi, availability_suveyor) VALUES (?,?)"
+	// cek sudah terdaftar atau belum
+	query := "SELECT user_id FROM user WHERE username = ? AND deleted_at IS NULL"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -1211,36 +1885,138 @@ func CreateSurveyor(inspektur string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
+
+	var userId int
+	err = stmt.QueryRow(usr.Username).Scan(&userId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Pengguna belum terdaftar atau telah dihapus"
+		res.Data = err.Error()
+		return res, errors.New("pengguna belum terdaftar atau telah dihapus")
+	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtSurveyor.Lokasi, dtSurveyor.Availability_surveyor)
+	// cek apakah password benar atau tidak
+	queryinsert := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin, s.lokasi, s.availability_surveyor FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id JOIN surveyor s ON u.user_id = s.user_id WHERE u.username = ? AND u.password = ?;"
+	stmtinsert, err := con.Prepare(queryinsert)
 	if err != nil {
 		res.Status = 401
-		res.Message = "exec gagal"
+		res.Message = "stmt gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	lastId, err := result.LastInsertId()
+	defer stmtinsert.Close()
+
+	var lokasi string
+	var availability_surveyor string
+	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin, &lokasi, &availability_surveyor)
 	if err != nil {
 		res.Status = 401
-		res.Message = "Last Id gagal"
+		res.Message = "password salah"
+		res.Data = err.Error()
+		return res, errors.New("password salah")
+	}
+
+	// ambil role + privilege
+	getRoleQuery := "SELECT ur.role_id, r.nama_role FROM user_role ur JOIN role r ON ur.role_id = r.role_id WHERE ur.user_id = ?;"
+	rolestmt, err := con.Prepare(getRoleQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	dtSurveyor.Surveyor_id = int(lastId)
+	defer rolestmt.Close()
+
+	var roleId int
+	var roleName string
+	err = rolestmt.QueryRow(userId).Scan(&roleId, &roleName)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mendapatkan role"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	getPrivilegeQuery := "SELECT pr.privilege_id, p.nama_privilege FROM user_privilege pr JOIN privilege p ON pr.privilege_id = p.privilege_id WHERE pr.user_id = ?;"
+	privilegestmt, err := con.Prepare(getPrivilegeQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer privilegestmt.Close()
+
+	var privilegeId int
+	var privilegeName string
+	err = privilegestmt.QueryRow(userId).Scan(&privilegeId, &privilegeName)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mendapatkan privilege"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// berhasil login => update timestamp terakhir login
+	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
+	updatestmt, err := con.Prepare(updateQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer updatestmt.Close()
+
+	_, err = updatestmt.Exec(userId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "update login_timestamp gagal"
+		res.Data = err.Error()
+		return res, err
+	}
 
 	res.Status = http.StatusOK
-	res.Message = "Berhasil memasukkan data"
-	res.Data = dtSurveyor
+	res.Message = "Berhasil login"
+	res.Data = map[string]interface{}{
+		"id":              loginUsr.Id,
+		"username":        loginUsr.Username,
+		"nama_lengkap":    loginUsr.Nama_lengkap,
+		"alamat":          loginUsr.Alamat,
+		"jenis_kelamin":   loginUsr.Jenis_kelamin,
+		"tanggal_lahir":   loginUsr.Tgl_lahir,
+		"email":           loginUsr.Email,
+		"nomor_telepon":   loginUsr.No_telp,
+		"foto_profil":     loginUsr.Foto_profil,
+		"ktp":             loginUsr.Ktp,
+		"status":          loginUsr.Status,
+		"tipe":            loginUsr.Tipe,
+		"first_login":     loginUsr.First_login,
+		"denied_by_admin": loginUsr.Denied_by_admin,
+		"role_id":         roleId,
+		"role_nama":       roleName,
+		"privilege_id":    privilegeId,
+		"nama_privilege":  privilegeName,
+	}
 
 	defer db.DbClose(con)
+
 	return res, nil
 }
 
-func GetAllSurveyor() (Response, error) {
+func SignUpSurveyor(akun string) (Response, error) {
 	var res Response
-	var arrSurveyor = []Surveyor{}
-	var dtSurveyor Surveyor
+
+	var usr = User{}
+
+	err := json.Unmarshal([]byte(akun), &usr)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -1250,7 +2026,181 @@ func GetAllSurveyor() (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT * FROM surveyor"
+	// cek sudah terdaftar atau belum
+	query := "SELECT user_id FROM user WHERE username = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var userId int64
+	err = stmt.QueryRow(usr.Username).Scan(&userId)
+	if err == nil {
+		res.Status = 401
+		res.Message = "User already registered"
+		res.Data = "User ID: " + fmt.Sprint(userId)
+		return res, errors.New("user already registered")
+	} else if err != sql.ErrNoRows {
+		res.Status = 500
+		res.Message = "Query execution failed"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	// masukkan ke db
+	insertquery := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon,tanggal_lahir) VALUES (?,?,?,?,?,NOW())"
+	insertstmt, err := con.Prepare(insertquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertstmt.Close()
+
+	result, err := insertstmt.Exec(usr.Username, usr.Password, usr.Nama_lengkap, usr.Email, usr.No_telp)
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert user gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert user gagal")
+	}
+	defer stmt.Close()
+
+	userId, err = result.LastInsertId()
+	if err != nil {
+		res.Status = 500
+		res.Message = "gagal mendapatkan user ID"
+		res.Data = err.Error()
+		return res, err
+	}
+	usr.Id = int(userId)
+
+	// tambah ke user detail
+	insertdetailquery := "INSERT INTO user_detail (user_detail_id,user_kelas_id,status,tipe) VALUES (?,?,?,?)"
+	insertdetailstmt, err := con.Prepare(insertdetailquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertstmt.Close()
+
+	_, err = insertdetailstmt.Exec(usr.Id, 1, 1, 7)
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert user detail gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert user detail gagal")
+	}
+	defer stmt.Close()
+
+	// tambah ke user role dan user privilege
+	insertrolequery := "INSERT INTO user_role (user_id,role_id) VALUES (?,?)"
+	insertrolestmt, err := con.Prepare(insertrolequery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertrolestmt.Close()
+
+	_, err = insertrolestmt.Exec(usr.Id, 7)
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert user role gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert user role gagal")
+	}
+	defer stmt.Close()
+
+	insertprivquery := "INSERT INTO user_privilege (user_id,privilege_id) VALUES (?,?)"
+	insertprivstmt, err := con.Prepare(insertprivquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertprivstmt.Close()
+
+	_, err = insertprivstmt.Exec(usr.Id, 17)
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert user privilege gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert user privilege gagal")
+	}
+	defer stmt.Close()
+
+	// tambah ke surveyor
+	insertsurvquery := "INSERT INTO surveyor (user_id,lokasi) VALUES (?,?)"
+	insertsurvstmt, err := con.Prepare(insertsurvquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertsurvstmt.Close()
+
+	_, err = insertsurvstmt.Exec(usr.Id, "")
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert surveyor gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert surveyor gagal")
+	}
+
+	// set waktu login dan created_at login => update timestamp terakhir login
+	updateQuery := "UPDATE user SET login_timestamp = NOW(), created_at = NOW() WHERE user_id = ?"
+	updatestmt, err := con.Prepare(updateQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer updatestmt.Close()
+
+	_, err = updatestmt.Exec(usr.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "update login_timestamp gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// hilangkan password buat global variabel
+	usr.Password = ""
+	res.Status = http.StatusOK
+	res.Message = "Berhasil buat user"
+	res.Data = usr
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func GetAllSurveyor() (Response, error) {
+	var res Response
+	var dtUserSurveyor = []UserSurveyor{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT u.user_id,u.username,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,u.ktp,s.suveyor_id,s.lokasi,s.availability_surveyor FROM user u JOIN surveyor s ON u.user_id = s.user_id"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -1260,28 +2210,45 @@ func GetAllSurveyor() (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Query()
+	rows, err := stmt.Query()
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	defer result.Close()
-	for result.Next() {
-		err = result.Scan(&dtSurveyor.Surveyor_id, &dtSurveyor.User_id, &dtSurveyor.Lokasi, &dtSurveyor.Availability_surveyor)
+	defer rows.Close()
+
+	for rows.Next() {
+		var _dtUserSurveyor UserSurveyor
+		err := rows.Scan(&_dtUserSurveyor.User_id, &_dtUserSurveyor.Username, &_dtUserSurveyor.Nama_lengkap, &_dtUserSurveyor.Alamat, &_dtUserSurveyor.Jenis_kelamin, &_dtUserSurveyor.Tgl_lahir, &_dtUserSurveyor.Email, &_dtUserSurveyor.No_telp, &_dtUserSurveyor.Foto_profil, &_dtUserSurveyor.Ktp, &_dtUserSurveyor.Surveyor_id, &_dtUserSurveyor.Lokasi, &_dtUserSurveyor.Availability_surveyor)
 		if err != nil {
 			res.Status = 401
-			res.Message = "rows scan"
+			res.Message = "scan gagal"
 			res.Data = err.Error()
 			return res, err
 		}
-		arrSurveyor = append(arrSurveyor, dtSurveyor)
+
+		dtUserSurveyor = append(dtUserSurveyor, _dtUserSurveyor)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(dtUserSurveyor) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
 	}
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
-	res.Data = arrSurveyor
+	res.Data = dtUserSurveyor
 
 	defer db.DbClose(con)
 	return res, nil
@@ -1325,12 +2292,78 @@ func GetSurveyorById(surveyor_id string) (Response, error) {
 	return res, nil
 }
 
-func UpdateSurveyorById(inspektur string) (Response, error) {
+func GetSurveyorByName(nama_surveyor string) (Response, error) {
+	var res Response
+	var dtUserSurveyor = []UserSurveyor{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT u.user_id,u.username,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,u.ktp,s.suveyor_id,s.lokasi,s.availability_surveyor,COUNT(CASE WHEN sr.status_request = 'O' THEN 1 END) AS surveyonprogress,COUNT(sr.id_transaksi_jual_sewa) AS totalsurvey FROM user u JOIN surveyor s ON u.user_id = s.user_id LEFT JOIN survey_request sr ON u.user_id = sr.user_id WHERE u.username LIKE ? GROUP BY u.user_id"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query("%" + nama_surveyor + "%")
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var _dtUserSurveyor UserSurveyor
+		err := rows.Scan(&_dtUserSurveyor.User_id, &_dtUserSurveyor.Username, &_dtUserSurveyor.Nama_lengkap, &_dtUserSurveyor.Alamat, &_dtUserSurveyor.Jenis_kelamin, &_dtUserSurveyor.Tgl_lahir, &_dtUserSurveyor.Email, &_dtUserSurveyor.No_telp, &_dtUserSurveyor.Foto_profil, &_dtUserSurveyor.Ktp, &_dtUserSurveyor.Surveyor_id, &_dtUserSurveyor.Lokasi, &_dtUserSurveyor.Availability_surveyor, &_dtUserSurveyor.SurveyOnProgress, &_dtUserSurveyor.TotalSurvey)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		dtUserSurveyor = append(dtUserSurveyor, _dtUserSurveyor)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(dtUserSurveyor) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtUserSurveyor
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func UpdateSurveyorById(data_surveyor string) (Response, error) {
 	var res Response
 
-	var dtSurveyor = Surveyor{}
+	var userSurveyor UserSurveyor
 
-	err := json.Unmarshal([]byte(inspektur), &dtSurveyor)
+	err := json.Unmarshal([]byte(data_surveyor), &userSurveyor)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal decode json"
@@ -1346,7 +2379,7 @@ func UpdateSurveyorById(inspektur string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE surveyor SET lokasi = ?, availability_surveyor = ? WHERE surveyor_id = ?"
+	query := "UPDATE user u JOIN surveyor s ON u.user_id = s.user_id SET u.username = ?, u.password = ?, u.email = ?, u.nomor_telepon = ?, u.updated_at = NOW() WHERE s.suveyor_id = ? "
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -1356,7 +2389,7 @@ func UpdateSurveyorById(inspektur string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtSurveyor.Lokasi, dtSurveyor.Availability_surveyor, dtSurveyor.Surveyor_id)
+	result, err := stmt.Exec(userSurveyor.Username, userSurveyor.Password, userSurveyor.Email, userSurveyor.No_telp, userSurveyor.Surveyor_id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
@@ -1420,6 +2453,71 @@ func DeleteSurveyorById(inspektur string) (Response, error) {
 	return res, nil
 }
 
+func GetAllSurveyorDetailed() (Response, error) {
+	var res Response
+	var dtUserSurveyor = []UserSurveyor{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT u.user_id,u.username,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,u.ktp,s.suveyor_id,s.lokasi,s.availability_surveyor,COUNT(CASE WHEN sr.status_request = 'O' THEN 1 END) AS surveyonprogress,COUNT(sr.id_transaksi_jual_sewa) AS totalsurvey FROM user u JOIN surveyor s ON u.user_id = s.user_id LEFT JOIN survey_request sr ON u.user_id = sr.user_id GROUP BY u.user_id"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var _dtUserSurveyor UserSurveyor
+		err := rows.Scan(&_dtUserSurveyor.User_id, &_dtUserSurveyor.Username, &_dtUserSurveyor.Nama_lengkap, &_dtUserSurveyor.Alamat, &_dtUserSurveyor.Jenis_kelamin, &_dtUserSurveyor.Tgl_lahir, &_dtUserSurveyor.Email, &_dtUserSurveyor.No_telp, &_dtUserSurveyor.Foto_profil, &_dtUserSurveyor.Ktp, &_dtUserSurveyor.Surveyor_id, &_dtUserSurveyor.Lokasi, &_dtUserSurveyor.Availability_surveyor, &_dtUserSurveyor.SurveyOnProgress, &_dtUserSurveyor.TotalSurvey)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		dtUserSurveyor = append(dtUserSurveyor, _dtUserSurveyor)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(dtUserSurveyor) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtUserSurveyor
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
 // CRUD survey_request ============================================================================
 func CreateSurveyReq(surveyreq string) (Response, error) {
 	var res Response
@@ -1441,7 +2539,7 @@ func CreateSurveyReq(surveyreq string) (Response, error) {
 		return res, err
 	}
 
-	query := "INSERT INTO survey_request (user_id, id_asset, dateline, status_request) VALUES (?,?,?,?)"
+	query := "INSERT INTO survey_request (user_id, id_asset, dateline) VALUES (?,?,?)"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -1451,7 +2549,7 @@ func CreateSurveyReq(surveyreq string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtSurveyReq.User_id, dtSurveyReq.Id_asset, dtSurveyReq.Dateline, dtSurveyReq.Status_request)
+	result, err := stmt.Exec(dtSurveyReq.User_id, dtSurveyReq.Id_asset, dtSurveyReq.Dateline)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -1466,7 +2564,7 @@ func CreateSurveyReq(surveyreq string) (Response, error) {
 		return res, err
 	}
 	dtSurveyReq.Id_transaksi_jual_sewa = int(lastId)
-
+	dtSurveyReq.Status_request = "O"
 	res.Status = http.StatusOK
 	res.Message = "Berhasil memasukkan data"
 	res.Data = dtSurveyReq
@@ -1548,6 +2646,44 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
 	defer stmt.Close()
 	nId, _ := strconv.Atoi(surveyreq_id)
 	err = stmt.QueryRow(nId).Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Dateline, &dtSurveyReq.Status_request)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtSurveyReq
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetSurveyReqByAsetId(aset_id string) (Response, error) {
+	var res Response
+	var dtSurveyReq SurveyRequest
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT * FROM survey_request WHERE id_asset = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+	nId, _ := strconv.Atoi(aset_id)
+	err = stmt.QueryRow(nId).Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Dateline, &dtSurveyReq.Status_request, &dtSurveyReq.Data_lengkap, &dtSurveyReq.Usage_old, &dtSurveyReq.Usage_new, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new, &dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new, &dtSurveyReq.Batas_koordinat_old, &dtSurveyReq.Batas_koordinat_new, &dtSurveyReq.Tags_old, &dtSurveyReq.Tags_new)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -1960,12 +3096,63 @@ func DeleteTranReqById(tranreq string) (Response, error) {
 	return res, nil
 }
 
-// CRUD user ============================================================================
-func CreateUser(user string) (Response, error) {
+func GetTranReqByUserId(user_id string) (Response, error) {
 	var res Response
-	var dtUser = User{}
+	// var dtTranReq TransactionRequest
+	var dtTranReq = []TransactionRequest{}
 
-	err := json.Unmarshal([]byte(user), &dtUser)
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT * FROM transaction_request WHERE user_id = ?"
+	rows, err := con.Query(query, user_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Failed to execute query"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tranReq TransactionRequest
+		err = rows.Scan(&tranReq.Id_transaksi_jual_sewa, &tranReq.User_id, &tranReq.Id_asset, &tranReq.Tipe, &tranReq.Masa_sewa, &tranReq.Meeting_log)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Failed to scan row"
+			res.Data = err.Error()
+			return res, err
+		}
+		dtTranReq = append(dtTranReq, tranReq)
+	}
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "Failed during row iteration"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtTranReq
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+// CRUD user ============================================================================
+func Login(akun string) (Response, error) {
+	var res Response
+
+	var usr = User{}
+	var loginUsr = User{}
+
+	err := json.Unmarshal([]byte(akun), &usr)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal decode json"
@@ -1981,7 +3168,8 @@ func CreateUser(user string) (Response, error) {
 		return res, err
 	}
 
-	query := "INSERT INTO user (username, password, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, nomor_telepon, foto_profil, ktp) VALUES (?,?,?,?,?,?,?,?,?,?)"
+	// cek sudah terdaftar atau belum
+	query := "SELECT user_id FROM user WHERE username = ? AND deleted_at IS NULL"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -1989,29 +3177,287 @@ func CreateUser(user string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
+
+	var userId int
+	err = stmt.QueryRow(usr.Username).Scan(&userId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Pengguna belum terdaftar atau telah dihapus"
+		res.Data = err.Error()
+		return res, errors.New("pengguna belum terdaftar atau telah dihapus")
+	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtUser.Username, dtUser.Password, dtUser.Nama_lengkap, dtUser.Alamat, dtUser.Jenis_kelamin, dtUser.Tgl_lahir, dtUser.Email, dtUser.No_telp, dtUser.Foto_profil, dtUser.Ktp)
+	// cek apakah password benar atau tidak
+	// queryinsert := "SELECT user_id, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, nomor_telepon, foto_profil, ktp FROM user WHERE username = ? AND password = ?"
+	queryinsert := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE u.username = ? AND u.password = ?;"
+	stmtinsert, err := con.Prepare(queryinsert)
 	if err != nil {
 		res.Status = 401
-		res.Message = "exec gagal"
+		res.Message = "stmt gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	lastId, err := result.LastInsertId()
+	defer stmtinsert.Close()
+
+	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin)
 	if err != nil {
 		res.Status = 401
-		res.Message = "Last Id gagal"
+		res.Message = "password salah"
+		res.Data = err.Error()
+		return res, errors.New("password salah")
+	}
+
+	// ambil role + privilege
+	getRoleQuery := "SELECT ur.role_id, r.nama_role FROM user_role ur JOIN role r ON ur.role_id = r.role_id WHERE ur.user_id = ?;"
+	rolestmt, err := con.Prepare(getRoleQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	dtUser.Id = int(lastId)
+	defer rolestmt.Close()
+
+	var roleId int
+	var roleName string
+	err = rolestmt.QueryRow(userId).Scan(&roleId, &roleName)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mendapatkan role"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	getPrivilegeQuery := "SELECT pr.privilege_id, p.nama_privilege FROM user_privilege pr JOIN privilege p ON pr.privilege_id = p.privilege_id WHERE pr.user_id = ?;"
+	privilegestmt, err := con.Prepare(getPrivilegeQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer privilegestmt.Close()
+
+	var privilegeId int
+	var privilegeName string
+	err = privilegestmt.QueryRow(userId).Scan(&privilegeId, &privilegeName)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mendapatkan privilege"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// berhasil login => update timestamp terakhir login
+	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
+	updatestmt, err := con.Prepare(updateQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer updatestmt.Close()
+
+	_, err = updatestmt.Exec(userId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "update login_timestamp gagal"
+		res.Data = err.Error()
+		return res, err
+	}
 
 	res.Status = http.StatusOK
-	res.Message = "Berhasil memasukkan data"
-	res.Data = dtUser
+	res.Message = "Berhasil login"
+	res.Data = map[string]interface{}{
+		"id":              loginUsr.Id,
+		"username":        loginUsr.Username,
+		"nama_lengkap":    loginUsr.Nama_lengkap,
+		"alamat":          loginUsr.Alamat,
+		"jenis_kelamin":   loginUsr.Jenis_kelamin,
+		"tanggal_lahir":   loginUsr.Tgl_lahir,
+		"email":           loginUsr.Email,
+		"nomor_telepon":   loginUsr.No_telp,
+		"foto_profil":     loginUsr.Foto_profil,
+		"ktp":             loginUsr.Ktp,
+		"status":          loginUsr.Status,
+		"tipe":            loginUsr.Tipe,
+		"first_login":     loginUsr.First_login,
+		"denied_by_admin": loginUsr.Denied_by_admin,
+		"role_id":         roleId,
+		"role_nama":       roleName,
+		"privilege_id":    privilegeId,
+		"nama_privilege":  privilegeName,
+	}
 
 	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func SignUp(akun string) (Response, error) {
+	var res Response
+
+	var usr = User{}
+
+	err := json.Unmarshal([]byte(akun), &usr)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// cek sudah terdaftar atau belum
+	query := "SELECT user_id FROM user WHERE username = ?"
+	// query := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon) VALUES (?,?,?,?,?)"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var userId int64
+	err = stmt.QueryRow(usr.Username).Scan(&userId)
+	if err == nil {
+		res.Status = 401
+		res.Message = "User already registered"
+		res.Data = "User ID: " + fmt.Sprint(userId)
+		return res, errors.New("user already registered")
+	} else if err != sql.ErrNoRows {
+		res.Status = 500
+		res.Message = "Query execution failed"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	// masukkan ke db
+	insertquery := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon,tanggal_lahir) VALUES (?,?,?,?,?,NOW())"
+	insertstmt, err := con.Prepare(insertquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertstmt.Close()
+
+	result, err := insertstmt.Exec(usr.Username, usr.Password, usr.Nama_lengkap, usr.Email, usr.No_telp)
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert user gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert user gagal")
+	}
+	defer stmt.Close()
+
+	userId, err = result.LastInsertId()
+	if err != nil {
+		res.Status = 500
+		res.Message = "gagal mendapatkan user ID"
+		res.Data = err.Error()
+		return res, err
+	}
+	usr.Id = int(userId)
+
+	// tambah ke user detail
+	insertdetailquery := "INSERT INTO user_detail (user_detail_id,user_kelas_id,status,tipe) VALUES (?,?,?,?)"
+	insertdetailstmt, err := con.Prepare(insertdetailquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertstmt.Close()
+
+	_, err = insertdetailstmt.Exec(usr.Id, 1, 1, 8)
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert user detail gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert user detail gagal")
+	}
+	defer stmt.Close()
+
+	// tambah ke user role dan user privilege
+	insertrolequery := "INSERT INTO user_role (user_id,role_id) VALUES (?,?)"
+	insertrolestmt, err := con.Prepare(insertrolequery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertrolestmt.Close()
+
+	_, err = insertrolestmt.Exec(usr.Id, 8)
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert user role gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert user detail gagal")
+	}
+	defer stmt.Close()
+
+	insertprivquery := "INSERT INTO user_privilege (user_id,privilege_id) VALUES (?,?)"
+	insertprivstmt, err := con.Prepare(insertprivquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertprivstmt.Close()
+
+	_, err = insertprivstmt.Exec(usr.Id, 17)
+	if err != nil {
+		res.Status = 401
+		res.Message = "insert user privilege gagal"
+		res.Data = err.Error()
+		return res, errors.New("insert user detail gagal")
+	}
+	defer stmt.Close()
+
+	// set waktu login dan created_at login => update timestamp terakhir login
+	updateQuery := "UPDATE user SET login_timestamp = NOW(), created_at = NOW() WHERE user_id = ?"
+	updatestmt, err := con.Prepare(updateQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt update gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer updatestmt.Close()
+
+	_, err = updatestmt.Exec(usr.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "update login_timestamp gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// hilangkan password buat global variabel
+	usr.Password = ""
+	res.Status = http.StatusOK
+	res.Message = "Berhasil buat user"
+	res.Data = usr
+
+	defer db.DbClose(con)
+
 	return res, nil
 }
 
@@ -2065,7 +3511,47 @@ func GetAllUser() (Response, error) {
 	return res, nil
 }
 
-// get user by id ada di user.go
+func GetUserById(id_user string) (Response, error) {
+	var res Response
+
+	var usr User
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka koneksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT user_id, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, nomor_telepon, foto_profil, ktp FROM user WHERE user_id = ?"
+	stmt, err := con.Prepare(query)
+
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(id_user)
+	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.Alamat, &usr.Jenis_kelamin, &usr.Tgl_lahir, &usr.Email, &usr.No_telp, &usr.Foto_profil, &usr.Ktp)
+	if err != nil {
+		res.Status = 401
+		res.Message = "rows gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = usr
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
 
 func GetUserByUsername(username string) (Response, error) {
 	var res Response
@@ -2203,7 +3689,7 @@ func UpdateUser(filefoto *multipart.FileHeader, userid, username, nama_lengkap, 
 	}
 	dstfoto.Close()
 
-	err = UpdateDataFotoPath("user", "foto_profil", pathFotoFile, "user", userId)
+	err = UpdateDataFotoPath("user", "foto_profil", pathFotoFile, "user_id", userId)
 	if err != nil {
 		return res, err
 	}
@@ -2311,7 +3797,7 @@ func UpdateUserFull(filefoto *multipart.FileHeader, filektp *multipart.FileHeade
 	}
 	dstfoto.Close()
 
-	err = UpdateDataFotoPath("user", "foto_profil", pathFotoFile, "user", userId)
+	err = UpdateDataFotoPath("user", "foto_profil", pathFotoFile, "user_id", userId)
 	if err != nil {
 		return res, err
 	}
@@ -2345,7 +3831,7 @@ func UpdateUserFull(filefoto *multipart.FileHeader, filektp *multipart.FileHeade
 	}
 	dstktp.Close()
 
-	err = UpdateDataFotoPath("user", "ktp", pathKtpFile, "user", userId)
+	err = UpdateDataFotoPath("user", "ktp", pathKtpFile, "user_id", userId)
 	if err != nil {
 		return res, err
 	}
@@ -2358,29 +3844,56 @@ func UpdateUserFull(filefoto *multipart.FileHeader, filektp *multipart.FileHeade
 	return res, nil
 }
 
-func UpdateDataFotoPath(tabel string, kolom string, path string, kolom_id string, id int) error {
-	log.Println("mengubah status foto di DB")
+func GetAllUserUnverified() (Response, error) {
+	var res Response
+	var arrUser = []User{}
 
-	// Open DB connection
 	con, err := db.DbConnection()
 	if err != nil {
-		log.Println("error: " + err.Error())
-		return err
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
 	}
-	defer db.DbClose(con) // Ensure the connection is closed
 
-	// Build the SQL query
-	query := fmt.Sprintf("UPDATE %s SET %s='%s' WHERE %s_id = %d", tabel, kolom, path, kolom_id, id)
-
-	// Execute the query
-	_, err = con.Exec(query) // Use Exec instead of Query since this is an UPDATE operation
+	query := "SELECT u.user_id, u.username, u.password, u.nama_lengkap, u.alamat, u.jenis_kelamin, u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp FROM user u INNER JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE ud.status = 'N'"
+	stmt, err := con.Prepare(query)
 	if err != nil {
-		log.Println("error executing query: " + err.Error())
-		return err
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+	fmt.Println("")
+	for result.Next() {
+		var dtUser User
+		err = result.Scan(&dtUser.Id, &dtUser.Username, &dtUser.Password, &dtUser.Nama_lengkap, &dtUser.Alamat, &dtUser.Jenis_kelamin, &dtUser.Tgl_lahir, &dtUser.Email, &dtUser.No_telp, &dtUser.Foto_profil, &dtUser.Ktp)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+		fmt.Println("data user:", dtUser)
+		arrUser = append(arrUser, dtUser)
 	}
 
-	fmt.Println("status foto di edit")
-	return nil
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrUser
+
+	defer db.DbClose(con)
+	return res, nil
 }
 
 func GetUserKTP(id_user string) (Response, error) {
@@ -2845,6 +4358,7 @@ func DeleteUserPriv(userPriv string) (Response, error) {
 }
 
 // CRUD user_role
+
 func CreateUserRole(userRole string) (Response, error) {
 	var res Response
 	var dtUserRole = UserRole{}
@@ -3234,16 +4748,43 @@ func UploadFile(file *multipart.FileHeader, id string, kolom_id string, folder s
 	return res, nil
 }
 
-func Login(akun string) (Response, error) {
+func UpdateDataFotoPath(tabel string, kolom string, path string, kolom_id string, id int) error {
+	log.Println("mengubah status foto di DB")
+	fmt.Println("mengubah status foto di DB")
+	// Open DB connection
+	con, err := db.DbConnection()
+	if err != nil {
+		log.Println("error: " + err.Error())
+		return err
+	}
+	defer db.DbClose(con) // Ensure the connection is closed
+
+	// Build the SQL query
+	query := fmt.Sprintf("UPDATE %s SET %s='%s' WHERE %s = %d", tabel, kolom, path, kolom_id, id)
+	fmt.Println(query)
+	// Execute the query
+	_, err = con.Exec(query) // Use Exec instead of Query since this is an UPDATE operation
+	if err != nil {
+		log.Println("error executing query: " + err.Error())
+		return err
+	}
+
+	fmt.Println("status foto di edit")
+	return nil
+}
+
+func VerifyUserAccept(input string) (Response, error) {
 	var res Response
 
-	var usr = User{}
-	var loginUsr = User{}
-
-	err := json.Unmarshal([]byte(akun), &usr)
+	type temp_verif_user_acc struct {
+		UserID int `json:"userid"`
+		Kelas  int `json:"kelas"`
+	}
+	var requestacc temp_verif_user_acc
+	err := json.Unmarshal([]byte(input), &requestacc)
 	if err != nil {
 		res.Status = 401
-		res.Message = "gagal decode json"
+		res.Message = "gagal unmarshal JSON"
 		res.Data = err.Error()
 		return res, err
 	}
@@ -3256,8 +4797,7 @@ func Login(akun string) (Response, error) {
 		return res, err
 	}
 
-	// cek sudah terdaftar atau belum
-	query := "SELECT user_id FROM user WHERE username = ? AND deleted_at IS NULL"
+	query := "UPDATE user_detail SET user_kelas_id=?,status='V' WHERE user_detail_id = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -3265,135 +4805,36 @@ func Login(akun string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-
-	var userId int
-	err = stmt.QueryRow(usr.Username).Scan(&userId)
-	if err != nil {
-		res.Status = 401
-		res.Message = "Pengguna belum terdaftar atau telah dihapus"
-		res.Data = err.Error()
-		return res, errors.New("pengguna belum terdaftar atau telah dihapus")
-	}
 	defer stmt.Close()
 
-	// cek apakah password benar atau tidak
-	// queryinsert := "SELECT user_id, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, nomor_telepon, foto_profil, ktp FROM user WHERE username = ? AND password = ?"
-	queryinsert := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE u.username = ? AND u.password = ?;"
-	stmtinsert, err := con.Prepare(queryinsert)
+	result, err := stmt.Exec(requestacc.Kelas, requestacc.UserID)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	defer stmtinsert.Close()
-
-	// err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp)
-	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin)
-	if err != nil {
-		res.Status = 401
-		res.Message = "password salah"
-		res.Data = err.Error()
-		return res, errors.New("password salah")
-	}
-
-	// ambil role + privilege
-	getRoleQuery := "SELECT ur.role_id, r.nama_role FROM user_role ur JOIN role r ON ur.role_id = r.role_id WHERE ur.user_id = ?;"
-	rolestmt, err := con.Prepare(getRoleQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer rolestmt.Close()
-
-	var roleId int
-	var roleName string
-	err = rolestmt.QueryRow(userId).Scan(&roleId, &roleName)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal mendapatkan role"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	getPrivilegeQuery := "SELECT pr.privilege_id, p.nama_privilege FROM user_privilege pr JOIN privilege p ON pr.privilege_id = p.privilege_id WHERE pr.user_id = ?;"
-	privilegestmt, err := con.Prepare(getPrivilegeQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer privilegestmt.Close()
-
-	var privilegeId int
-	var privilegeName string
-	err = privilegestmt.QueryRow(userId).Scan(&privilegeId, &privilegeName)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal mendapatkan privilege"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	// berhasil login => update timestamp terakhir login
-	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
-	updatestmt, err := con.Prepare(updateQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer updatestmt.Close()
-
-	_, err = updatestmt.Exec(userId)
-	if err != nil {
-		res.Status = 401
-		res.Message = "update login_timestamp gagal"
-		res.Data = err.Error()
-		return res, err
-	}
 
 	res.Status = http.StatusOK
-	res.Message = "Berhasil login"
-	res.Data = map[string]interface{}{
-		"id":              loginUsr.Id,
-		"username":        loginUsr.Username,
-		"nama_lengkap":    loginUsr.Nama_lengkap,
-		"alamat":          loginUsr.Alamat,
-		"jenis_kelamin":   loginUsr.Jenis_kelamin,
-		"tanggal_lahir":   loginUsr.Tgl_lahir,
-		"email":           loginUsr.Email,
-		"nomor_telepon":   loginUsr.No_telp,
-		"foto_profil":     loginUsr.Foto_profil,
-		"ktp":             loginUsr.Ktp,
-		"status":          loginUsr.Status,
-		"tipe":            loginUsr.Tipe,
-		"first_login":     loginUsr.First_login,
-		"denied_by_admin": loginUsr.Denied_by_admin,
-		"role_id":         roleId,
-		"role_nama":       roleName,
-		"privilege_id":    privilegeId,
-		"nama_privilege":  privilegeName,
-	}
+	res.Message = "Berhasil mengupdate data"
+	res.Data = result
 
 	defer db.DbClose(con)
-
 	return res, nil
 }
 
-func SignUp(akun string) (Response, error) {
+func VerifyPerusahaanAccept(input string) (Response, error) {
 	var res Response
 
-	var usr = User{}
-
-	err := json.Unmarshal([]byte(akun), &usr)
+	type temp_verif_perusahaan_acc struct {
+		PerusahaanId int `json:"perusahaan_id"`
+		Kelas        int `json:"kelas"`
+	}
+	var requestacc temp_verif_perusahaan_acc
+	err := json.Unmarshal([]byte(input), &requestacc)
 	if err != nil {
 		res.Status = 401
-		res.Message = "gagal decode json"
+		res.Message = "gagal unmarshal JSON"
 		res.Data = err.Error()
 		return res, err
 	}
@@ -3406,9 +4847,7 @@ func SignUp(akun string) (Response, error) {
 		return res, err
 	}
 
-	// cek sudah terdaftar atau belum
-	query := "SELECT user_id FROM user WHERE username = ?"
-	// query := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon) VALUES (?,?,?,?,?)"
+	query := "UPDATE perusahaan SET kelas=?,status='V' WHERE perusahaan_id = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -3416,156 +4855,49 @@ func SignUp(akun string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-
-	var userId int64
-	err = stmt.QueryRow(usr.Username).Scan(&userId)
-	if err == nil {
-		res.Status = 401
-		res.Message = "User already registered"
-		res.Data = "User ID: " + fmt.Sprint(userId)
-		return res, errors.New("user already registered")
-	} else if err != sql.ErrNoRows {
-		res.Status = 500
-		res.Message = "Query execution failed"
-		res.Data = err.Error()
-		return res, err
-	}
 	defer stmt.Close()
 
-	// masukkan ke db
-	insertquery := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon,tanggal_lahir) VALUES (?,?,?,?,?,NOW())"
-	insertstmt, err := con.Prepare(insertquery)
+	result, err := stmt.Exec(requestacc.Kelas, requestacc.PerusahaanId)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	defer insertstmt.Close()
 
-	result, err := insertstmt.Exec(usr.Username, usr.Password, usr.Nama_lengkap, usr.Email, usr.No_telp)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user gagal")
-	}
-	defer stmt.Close()
-
-	userId, err = result.LastInsertId()
-	if err != nil {
-		res.Status = 500
-		res.Message = "gagal mendapatkan user ID"
-		res.Data = err.Error()
-		return res, err
-	}
-	usr.Id = int(userId)
-
-	// tambah ke user detail
-	insertdetailquery := "INSERT INTO user_detail (user_detail_id,user_kelas_id,status,tipe) VALUES (?,?,?,?)"
-	insertdetailstmt, err := con.Prepare(insertdetailquery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertstmt.Close()
-
-	_, err = insertdetailstmt.Exec(usr.Id, 1, 1, 8)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user detail gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user detail gagal")
-	}
-	defer stmt.Close()
-
-	// tambah ke user role dan user privilege
-	insertrolequery := "INSERT INTO user_role (user_id,role_id) VALUES (?,?)"
-	insertrolestmt, err := con.Prepare(insertrolequery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertrolestmt.Close()
-
-	_, err = insertrolestmt.Exec(usr.Id, 8)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user role gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user detail gagal")
-	}
-	defer stmt.Close()
-
-	insertprivquery := "INSERT INTO user_privilege (user_id,privilege_id) VALUES (?,?)"
-	insertprivstmt, err := con.Prepare(insertprivquery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertprivstmt.Close()
-
-	_, err = insertprivstmt.Exec(usr.Id, 17)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user privilege gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user detail gagal")
-	}
-	defer stmt.Close()
-
-	// set waktu login dan created_at login => update timestamp terakhir login
-	updateQuery := "UPDATE user SET login_timestamp = NOW(), created_at = NOW() WHERE user_id = ?"
-	updatestmt, err := con.Prepare(updateQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer updatestmt.Close()
-
-	_, err = updatestmt.Exec(usr.Id)
-	if err != nil {
-		res.Status = 401
-		res.Message = "update login_timestamp gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	// hilangkan password buat global variabel
-	usr.Password = ""
 	res.Status = http.StatusOK
-	res.Message = "Berhasil buat user"
-	res.Data = usr
+	res.Message = "Berhasil mengupdate data"
+	res.Data = result
 
 	defer db.DbClose(con)
-
 	return res, nil
 }
 
-func GetUserById(id_user string) (Response, error) {
+func VerifyUserDecline(input string) (Response, error) {
 	var res Response
 
-	var usr User
+	type temp_verif_user_deny struct {
+		UserID int `json:"userid"`
+	}
+	var requestacc temp_verif_user_deny
+	err := json.Unmarshal([]byte(input), &requestacc)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal unmarshal JSON"
+		res.Data = err.Error()
+		return res, err
+	}
 
 	con, err := db.DbConnection()
 	if err != nil {
 		res.Status = 401
-		res.Message = "gagal membuka koneksi"
+		res.Message = "gagal membuka database"
 		res.Data = err.Error()
 		return res, err
 	}
 
-	query := "SELECT user_id, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, nomor_telepon, foto_profil, ktp FROM user WHERE user_id = ?"
+	query := "UPDATE user_detail SET status='N',denied_by_admin='Y' WHERE user_detail_id = ?"
 	stmt, err := con.Prepare(query)
-
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
@@ -3574,8 +4906,131 @@ func GetUserById(id_user string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	nId, _ := strconv.Atoi(id_user)
-	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.Alamat, &usr.Jenis_kelamin, &usr.Tgl_lahir, &usr.Email, &usr.No_telp, &usr.Foto_profil, &usr.Ktp)
+	result, err := stmt.Exec(requestacc.UserID)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// kirim notif (masih mendatang)
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = result
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func VerifyPerusahaanDecline(input string) (Response, error) {
+	var res Response
+
+	type temp_verif_perusahaan_deny struct {
+		PerusahaanId int `json:"perusahaan_id"`
+	}
+	var requestacc temp_verif_perusahaan_deny
+	err := json.Unmarshal([]byte(input), &requestacc)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal unmarshal JSON"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE perusahaan SET status='N',denied_by_admin='Y' WHERE perusahaan_id = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(requestacc.PerusahaanId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// kirim notif (masih mendatang)
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = result
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func VerifyAssetAccept(input string) (Response, error) {
+	var res Response
+	var dtSurveyReq SurveyRequest
+
+	type temp_verif_asset_acc struct {
+		SurveryReqId int `json:"surveyreq_id"`
+	}
+
+	var requestacc temp_verif_asset_acc
+	err := json.Unmarshal([]byte(input), &requestacc)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal unmarshal JSON"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE survey_request SET status_request='F' WHERE id_transaksi_jual_sewa = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(requestacc.SurveryReqId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	selectquery := "SELECT * FROM survey_request WHERE id_transaksi_jual_sewa = ?"
+	selectstmt, err := con.Prepare(selectquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer selectstmt.Close()
+	var temp_tags_old sql.NullString
+	var temp_tags_new sql.NullString
+
+	err = selectstmt.QueryRow(requestacc.SurveryReqId).Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Dateline, &dtSurveyReq.Status_request, &dtSurveyReq.Data_lengkap, &dtSurveyReq.Usage_old, &dtSurveyReq.Usage_new, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new, &dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new, &dtSurveyReq.Batas_koordinat_old, &dtSurveyReq.Batas_koordinat_new, &temp_tags_old, &temp_tags_new)
 	if err != nil {
 		res.Status = 401
 		res.Message = "rows gagal"
@@ -3583,12 +5038,138 @@ func GetUserById(id_user string) (Response, error) {
 		return res, err
 	}
 
+	if temp_tags_old.Valid {
+		dtSurveyReq.Tags_old = temp_tags_old.String
+	} else {
+		dtSurveyReq.Tags_old = ""
+	}
+
+	if temp_tags_new.Valid {
+		dtSurveyReq.Tags_new = temp_tags_new.String
+	} else {
+		dtSurveyReq.Tags_new = ""
+	}
+
+	// update data asset dengan yang baru
+	updatequery := "UPDATE asset SET `kondisi`= ?,`batas_koordinat`= ?,`luas`= ?,`nilai`= ?,`usage`= ? WHERE `id_asset`= ?"
+	updatestmt, err := con.Prepare(updatequery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer updatestmt.Close()
+
+	_, err = updatestmt.Exec(dtSurveyReq.Kondisi_new, dtSurveyReq.Batas_koordinat_new, dtSurveyReq.Luas_new, dtSurveyReq.Nilai_new, dtSurveyReq.Usage_new, dtSurveyReq.Id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	update2query := "UPDATE asset_tags SET id_tags= ? WHERE id_asset= ?"
+	update2stmt, err := con.Prepare(update2query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer update2stmt.Close()
+
+	_, err = update2stmt.Exec(dtSurveyReq.Tags_new, dtSurveyReq.Id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tempaset, _ := GetAssetById(string(dtSurveyReq.Id_asset))
+
 	res.Status = http.StatusOK
-	res.Message = "Berhasil mengambil data"
-	res.Data = usr
+	res.Message = "Berhasil mengupdate data"
+	res.Data = tempaset
 
 	defer db.DbClose(con)
+	return res, nil
+}
 
+func ReassignAsset(input string) (Response, error) {
+	var res Response
+
+	type temp_verif_asset_acc struct {
+		SurveyReqId int    `json:"surveyreq_id"`
+		SurveyorId  int    `json:"surveyor_id"`
+		Dateline    string `json:"dateline"`
+	}
+
+	var requestacc temp_verif_asset_acc
+	err := json.Unmarshal([]byte(input), &requestacc)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal unmarshal JSON"
+		res.Data = err.Error()
+		return res, err
+	}
+	fmt.Println(requestacc)
+	fmt.Println(requestacc.SurveyorId)
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// ambil user id dari surveyor
+	surveyorquery := "SELECT user_id FROM surveyor WHERE `suveyor_id` = ?"
+	surveyorstmt, err := con.Prepare(surveyorquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer surveyorstmt.Close()
+
+	var _tempuserid int
+	err = surveyorstmt.QueryRow(requestacc.SurveyorId).Scan(&_tempuserid)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengambil user_id"
+		res.Data = err.Error()
+		return res, err
+	}
+	fmt.Println(requestacc.SurveyorId)
+	fmt.Println(_tempuserid)
+
+	query := "UPDATE survey_request SET `user_id`=?,`dateline`=?,`status_request`='R' WHERE id_transaksi_jual_sewa = ?"
+	stmt2, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt2.Close()
+
+	result, err := stmt2.Exec(_tempuserid, requestacc.Dateline, requestacc.SurveyReqId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = result
+
+	defer db.DbClose(con)
 	return res, nil
 }
 
@@ -3603,342 +5184,6 @@ func ForgotPass(email string) (Response, error) {
 
 func ChangePass() (Response, error) {
 	var res Response
-
-	return res, nil
-}
-
-// INI UNTUK SURVEYOR - BELUM SELESAI
-
-func LoginSurveyor(akun string) (Response, error) {
-	var res Response
-
-	var usr = User{}
-	var loginUsr = User{}
-
-	err := json.Unmarshal([]byte(akun), &usr)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	// cek sudah terdaftar atau belum
-	query := "SELECT user_id FROM user WHERE username = ? AND deleted_at IS NULL"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	var userId int
-	err = stmt.QueryRow(usr.Username).Scan(&userId)
-	if err != nil {
-		res.Status = 401
-		res.Message = "Pengguna belum terdaftar atau telah dihapus"
-		res.Data = err.Error()
-		return res, errors.New("pengguna belum terdaftar atau telah dihapus")
-	}
-	defer stmt.Close()
-
-	// cek apakah password benar atau tidak
-	queryinsert := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin, s.lokasi, s.availability_surveyor FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id JOIN surveyor s ON u.user_id = s.user_id WHERE u.username = ? AND u.password = ?;"
-	stmtinsert, err := con.Prepare(queryinsert)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmtinsert.Close()
-
-	var lokasi string
-	var availability_surveyor string
-	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin, &lokasi, &availability_surveyor)
-	if err != nil {
-		res.Status = 401
-		res.Message = "password salah"
-		res.Data = err.Error()
-		return res, errors.New("password salah")
-	}
-
-	// ambil role + privilege
-	getRoleQuery := "SELECT ur.role_id, r.nama_role FROM user_role ur JOIN role r ON ur.role_id = r.role_id WHERE ur.user_id = ?;"
-	rolestmt, err := con.Prepare(getRoleQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer rolestmt.Close()
-
-	var roleId int
-	var roleName string
-	err = rolestmt.QueryRow(userId).Scan(&roleId, &roleName)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal mendapatkan role"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	getPrivilegeQuery := "SELECT pr.privilege_id, p.nama_privilege FROM user_privilege pr JOIN privilege p ON pr.privilege_id = p.privilege_id WHERE pr.user_id = ?;"
-	privilegestmt, err := con.Prepare(getPrivilegeQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer privilegestmt.Close()
-
-	var privilegeId int
-	var privilegeName string
-	err = privilegestmt.QueryRow(userId).Scan(&privilegeId, &privilegeName)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal mendapatkan privilege"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	// berhasil login => update timestamp terakhir login
-	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
-	updatestmt, err := con.Prepare(updateQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer updatestmt.Close()
-
-	_, err = updatestmt.Exec(userId)
-	if err != nil {
-		res.Status = 401
-		res.Message = "update login_timestamp gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	res.Status = http.StatusOK
-	res.Message = "Berhasil login"
-	res.Data = map[string]interface{}{
-		"id":              loginUsr.Id,
-		"username":        loginUsr.Username,
-		"nama_lengkap":    loginUsr.Nama_lengkap,
-		"alamat":          loginUsr.Alamat,
-		"jenis_kelamin":   loginUsr.Jenis_kelamin,
-		"tanggal_lahir":   loginUsr.Tgl_lahir,
-		"email":           loginUsr.Email,
-		"nomor_telepon":   loginUsr.No_telp,
-		"foto_profil":     loginUsr.Foto_profil,
-		"ktp":             loginUsr.Ktp,
-		"status":          loginUsr.Status,
-		"tipe":            loginUsr.Tipe,
-		"first_login":     loginUsr.First_login,
-		"denied_by_admin": loginUsr.Denied_by_admin,
-		"role_id":         roleId,
-		"role_nama":       roleName,
-		"privilege_id":    privilegeId,
-		"nama_privilege":  privilegeName,
-	}
-
-	defer db.DbClose(con)
-
-	return res, nil
-}
-
-func SignUpSurveyor(akun string) (Response, error) {
-	var res Response
-
-	var usr = User{}
-
-	err := json.Unmarshal([]byte(akun), &usr)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	// cek sudah terdaftar atau belum
-	query := "SELECT user_id FROM user WHERE username = ?"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	var userId int64
-	err = stmt.QueryRow(usr.Username).Scan(&userId)
-	if err == nil {
-		res.Status = 401
-		res.Message = "User already registered"
-		res.Data = "User ID: " + fmt.Sprint(userId)
-		return res, errors.New("user already registered")
-	} else if err != sql.ErrNoRows {
-		res.Status = 500
-		res.Message = "Query execution failed"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
-
-	// masukkan ke db
-	insertquery := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon,tanggal_lahir) VALUES (?,?,?,?,?,NOW())"
-	insertstmt, err := con.Prepare(insertquery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertstmt.Close()
-
-	result, err := insertstmt.Exec(usr.Username, usr.Password, usr.Nama_lengkap, usr.Email, usr.No_telp)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user gagal")
-	}
-	defer stmt.Close()
-
-	userId, err = result.LastInsertId()
-	if err != nil {
-		res.Status = 500
-		res.Message = "gagal mendapatkan user ID"
-		res.Data = err.Error()
-		return res, err
-	}
-	usr.Id = int(userId)
-
-	// tambah ke user detail
-	insertdetailquery := "INSERT INTO user_detail (user_detail_id,user_kelas_id,status,tipe) VALUES (?,?,?,?)"
-	insertdetailstmt, err := con.Prepare(insertdetailquery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertstmt.Close()
-
-	_, err = insertdetailstmt.Exec(usr.Id, 1, 1, 7)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user detail gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user detail gagal")
-	}
-	defer stmt.Close()
-
-	// tambah ke user role dan user privilege
-	insertrolequery := "INSERT INTO user_role (user_id,role_id) VALUES (?,?)"
-	insertrolestmt, err := con.Prepare(insertrolequery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertrolestmt.Close()
-
-	_, err = insertrolestmt.Exec(usr.Id, 7)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user role gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user role gagal")
-	}
-	defer stmt.Close()
-
-	insertprivquery := "INSERT INTO user_privilege (user_id,privilege_id) VALUES (?,?)"
-	insertprivstmt, err := con.Prepare(insertprivquery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertprivstmt.Close()
-
-	_, err = insertprivstmt.Exec(usr.Id, 17)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user privilege gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user privilege gagal")
-	}
-	defer stmt.Close()
-
-	// tambah ke surveyor
-	insertsurvquery := "INSERT INTO surveyor (user_id,lokasi) VALUES (?,?)"
-	insertsurvstmt, err := con.Prepare(insertsurvquery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertsurvstmt.Close()
-
-	_, err = insertsurvstmt.Exec(usr.Id, "")
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert surveyor gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert surveyor gagal")
-	}
-
-	// set waktu login dan created_at login => update timestamp terakhir login
-	updateQuery := "UPDATE user SET login_timestamp = NOW(), created_at = NOW() WHERE user_id = ?"
-	updatestmt, err := con.Prepare(updateQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer updatestmt.Close()
-
-	_, err = updatestmt.Exec(usr.Id)
-	if err != nil {
-		res.Status = 401
-		res.Message = "update login_timestamp gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	// hilangkan password buat global variabel
-	usr.Password = ""
-	res.Status = http.StatusOK
-	res.Message = "Berhasil buat user"
-	res.Data = usr
-
-	defer db.DbClose(con)
 
 	return res, nil
 }
