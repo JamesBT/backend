@@ -30,8 +30,9 @@ func TambahAsset(c echo.Context) error {
 	batasKoordinat := c.FormValue("batas_koordinat")
 	luas := c.FormValue("luas")
 	nilai := c.FormValue("nilai")
+	provinsi := c.FormValue("provinsi")
 	perusahaan_id := c.FormValue("perusahaan_id")
-	result, err := model.CreateAsset(fileLegalitas, suratKuasa, asetName, perusahaan_id, tipe, nomorLegalitas, status, alamat, kondisi, koordinat, batasKoordinat, luas, nilai)
+	result, err := model.CreateAsset(fileLegalitas, suratKuasa, asetName, perusahaan_id, tipe, nomorLegalitas, status, alamat, kondisi, koordinat, batasKoordinat, luas, nilai, provinsi)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -188,6 +189,28 @@ func GetPerusahaanByUserId(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func GetPerusahaanDetailById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetPerusahaanDetailById(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func HomeUserPerusahaan(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.HomeUserPerusahaan(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 // privilege
 
 // role
@@ -266,6 +289,45 @@ func UpdateSurveyorById(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func GetSurveyorByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetSurveyorByUserId(string(id))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UpdateUserBySurveyorId(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.UpdateUserBySurveyorId(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UpdateSurveyorByUserId(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.UpdateSurveyorByUserId(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 // survey_request
 func CreateSurveyReq(c echo.Context) error {
 	surveyreq, err := io.ReadAll(c.Request().Body)
@@ -273,6 +335,38 @@ func CreateSurveyReq(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
 	result, err := model.CreateSurveyReq(string(surveyreq))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllSurveyReqDetailed(c echo.Context) error {
+	result, err := model.GetAllSurveyReqDetailed()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetSurveyReqById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetSurveyReqById(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetSurveyReqByAsetNama(c echo.Context) error {
+	name := c.Param("nama")
+	result, err := model.GetSurveyReqByAsetName(name)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -292,10 +386,54 @@ func GetSurveyReqByAsetId(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func GetAllSurveyReqByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAllSurveyReqByUserId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllOngoingSurveyReqByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAllOngoingSurveyReqByUserId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllFinishedSurveyReqByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAllFinishedSurveyReqByUserId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 // transaction_request
 func GetTranReqByUserId(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.GetTranReqByUserId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetTranReqByPerusahaanId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetTranReqByPerusahaanId(id)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -325,6 +463,16 @@ func SignUp(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
 	result, err := model.SignUp(string(akun))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllUser(c echo.Context) error {
+	result, err := model.GetAllUser()
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -459,6 +607,49 @@ func GetAllUserUnverified(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func GetAllUserByPerusahaanId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAllUserByPerusahaanId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+// user_privilege
+
+// user_role
+
+// fungsi tambahan
+func GetFoto(c echo.Context) error {
+	id := c.FormValue("id")
+	folder := c.FormValue("folder")
+	result := model.GetPhoto(folder, id)
+	ip := c.RealIP()
+	model.InsertLog(ip, "GetPhotoFolder", "getfoto("+id+")", 1)
+	return c.File(result)
+}
+
+func UploadFoto(c echo.Context) error {
+	folder := c.FormValue("folder")
+	id := c.FormValue("id")
+	fotoFile, err := c.FormFile("photo")
+	nId, _ := strconv.Atoi(id)
+	tId := int64(nId)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	result, err := model.UploadFotoFolder(fotoFile, tId, folder)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func VerifyUserAccept(c echo.Context) error {
 	input, err := io.ReadAll(c.Request().Body)
 	if err != nil {
@@ -543,30 +734,12 @@ func VerifyAssetReassign(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-// user_privilege
-
-// user_role
-
-// fungsi tambahan
-func GetFoto(c echo.Context) error {
-	id := c.FormValue("id")
-	folder := c.FormValue("folder")
-	result := model.GetPhoto(folder, id)
-	ip := c.RealIP()
-	model.InsertLog(ip, "GetPhotoFolder", "getfoto("+id+")", 1)
-	return c.File(result)
-}
-
-func UploadFoto(c echo.Context) error {
-	folder := c.FormValue("folder")
-	id := c.FormValue("id")
-	fotoFile, err := c.FormFile("photo")
-	nId, _ := strconv.Atoi(id)
-	tId := int64(nId)
+func VerifyOTP(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
-	result, err := model.UploadFotoFolder(fotoFile, tId, folder)
+	result, err := model.VerifyOTP(string(input))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 	}

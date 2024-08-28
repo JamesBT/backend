@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS `asset` (
   `id_asset` int(11) NOT NULL AUTO_INCREMENT,
   `id_asset_parent` int(11) DEFAULT NULL,
   `id_asset_child` int(11) DEFAULT NULL,
+  `id_join` varchar(50) DEFAULT NULL,
   `perusahaan_id` int(11) DEFAULT NULL,
   `nama` varchar(50) NOT NULL,
   `tipe` enum('L','B','A') NOT NULL DEFAULT 'L',
@@ -31,14 +32,17 @@ CREATE TABLE IF NOT EXISTS `asset` (
   `file_legalitas` varchar(225) NOT NULL DEFAULT '',
   `status_asset` enum('S','T') NOT NULL DEFAULT 'T',
   `surat_kuasa` varchar(225) NOT NULL DEFAULT '',
-  `alamat` text NOT NULL,
-  `kondisi` varchar(50) NOT NULL,
-  `titik_koordinat` text NOT NULL,
-  `batas_koordinat` text NOT NULL,
+  `alamat` text NOT NULL DEFAULT '',
+  `kondisi` text NOT NULL DEFAULT '',
+  `titik_koordinat` text NOT NULL DEFAULT '',
+  `batas_koordinat` text NOT NULL DEFAULT '',
   `luas` float NOT NULL DEFAULT 0,
   `nilai` float NOT NULL DEFAULT 0,
+  `provinsi` varchar(255) NOT NULL DEFAULT '',
+  `usage` text NOT NULL DEFAULT '\'\'',
   `status_pengecekan` enum('Y','N') NOT NULL DEFAULT 'N',
   `status_verifikasi` enum('Y','N') NOT NULL DEFAULT 'N',
+  `status_publik` enum('Y','N') NOT NULL DEFAULT 'N',
   `hak_akses` varchar(50) NOT NULL DEFAULT '',
   `masa_sewa` date DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
@@ -50,12 +54,9 @@ CREATE TABLE IF NOT EXISTS `asset` (
   CONSTRAINT `id_asset_child` FOREIGN KEY (`id_asset_child`) REFERENCES `asset` (`id_asset`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `id_asset_parent` FOREIGN KEY (`id_asset_parent`) REFERENCES `asset` (`id_asset`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `id_asset_perusahaan` FOREIGN KEY (`perusahaan_id`) REFERENCES `perusahaan` (`perusahaan_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.asset: ~2 rows (approximately)
-REPLACE INTO `asset` (`id_asset`, `id_asset_parent`, `id_asset_child`, `perusahaan_id`, `nama`, `tipe`, `nomor_legalitas`, `file_legalitas`, `status_asset`, `surat_kuasa`, `alamat`, `kondisi`, `titik_koordinat`, `batas_koordinat`, `luas`, `nilai`, `status_pengecekan`, `status_verifikasi`, `hak_akses`, `masa_sewa`, `created_at`, `deleted_at`) VALUES
-	(1, NULL, NULL, NULL, 'testing1', 'L', 'testing1?', 'uploads/asset/file_legalitas/1_1_test.png', 'T', 'uploads/asset/surat_kuasa/1_1_images.jpeg', 'testing1', 'testing1', '', '-7.272883145963535, 112.74273076198207', 100, 100, 'N', 'N', '', NULL, '2024-08-14 12:21:22', NULL),
-	(2, NULL, NULL, NULL, 'testing2', 'L', 'testing2?', 'uploads/asset/file_legalitas/2_1_test.png', 'T', 'uploads/asset/surat_kuasa/2_1_images.jpeg', 'testing2', 'testing2', '', '-7.272883145963535, 112.74273076198207', 100, 100, 'N', 'N', '', NULL, '2024-08-14 12:21:50', NULL);
+-- Dumping data for table asset.asset: ~0 rows (approximately)
 
 -- Dumping structure for table asset.asset_gambar
 CREATE TABLE IF NOT EXISTS `asset_gambar` (
@@ -118,10 +119,12 @@ CREATE TABLE IF NOT EXISTS `notification` (
 CREATE TABLE IF NOT EXISTS `perusahaan` (
   `perusahaan_id` int(11) NOT NULL AUTO_INCREMENT,
   `status` enum('V','N') NOT NULL DEFAULT 'N',
+  `denied_by_admin` enum('Y','N') NOT NULL DEFAULT 'N',
   `name` varchar(255) NOT NULL,
   `username` varchar(50) NOT NULL,
   `lokasi` varchar(255) NOT NULL,
   `tipe` enum('L','B','A') NOT NULL,
+  `kelas` int(11) NOT NULL DEFAULT 1,
   `dokumen_kepemilikan` varchar(255) NOT NULL DEFAULT '',
   `dokumen_perusahaan` varchar(255) NOT NULL DEFAULT '',
   `modal_awal` float NOT NULL,
@@ -130,7 +133,9 @@ CREATE TABLE IF NOT EXISTS `perusahaan` (
   `updated_at` datetime DEFAULT NULL,
   `deleted_at` datetime DEFAULT NULL,
   `login_timestamp` datetime DEFAULT current_timestamp(),
-  PRIMARY KEY (`perusahaan_id`)
+  PRIMARY KEY (`perusahaan_id`),
+  KEY `kelas` (`kelas`),
+  CONSTRAINT `fk_perusahaan_kelas` FOREIGN KEY (`kelas`) REFERENCES `kelas` (`kelas_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Dumping data for table asset.perusahaan: ~0 rows (approximately)
@@ -196,43 +201,43 @@ CREATE TABLE IF NOT EXISTS `surveyor` (
   PRIMARY KEY (`suveyor_id`),
   KEY `id_user` (`user_id`),
   CONSTRAINT `FK_surveyor_userid` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.surveyor: ~2 rows (approximately)
-REPLACE INTO `surveyor` (`suveyor_id`, `user_id`, `lokasi`, `availability_surveyor`) VALUES
-	(1, 5, '', 'Y'),
-	(2, 6, '', 'Y');
+-- Dumping data for table asset.surveyor: ~0 rows (approximately)
 
 -- Dumping structure for table asset.survey_request
 CREATE TABLE IF NOT EXISTS `survey_request` (
   `id_transaksi_jual_sewa` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL DEFAULT 0,
   `id_asset` int(11) NOT NULL DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `dateline` date NOT NULL,
   `status_request` enum('O','F','R') NOT NULL DEFAULT 'O',
   `data_lengkap` enum('Y','N') NOT NULL DEFAULT 'N',
-  `usage_old` int(11) NOT NULL,
-  `usage_new` int(11) NOT NULL,
-  `luas_old` int(11) NOT NULL,
-  `luas_new` int(11) NOT NULL,
-  `nilai_old` int(11) NOT NULL,
-  `nilai_new` int(11) NOT NULL,
-  `kondisi_old` int(11) NOT NULL,
-  `kondisi_new` int(11) NOT NULL,
-  `batas_koordinat_old` int(11) NOT NULL,
-  `batas_koordinat_new` int(11) NOT NULL,
-  `tags_old` int(11) NOT NULL,
-  `tags_new` int(11) NOT NULL,
+  `usage_old` varchar(255) NOT NULL DEFAULT '',
+  `usage_new` varchar(255) NOT NULL DEFAULT '',
+  `luas_old` float NOT NULL DEFAULT 0,
+  `luas_new` float NOT NULL DEFAULT 0,
+  `nilai_old` float NOT NULL DEFAULT 0,
+  `nilai_new` float NOT NULL DEFAULT 0,
+  `kondisi_old` text NOT NULL DEFAULT '',
+  `kondisi_new` text NOT NULL DEFAULT '',
+  `batas_koordinat_old` text NOT NULL DEFAULT '',
+  `batas_koordinat_new` text NOT NULL DEFAULT '',
+  `tags_old` int(11) DEFAULT NULL,
+  `tags_new` int(11) DEFAULT NULL,
   PRIMARY KEY (`id_transaksi_jual_sewa`),
   KEY `user_id` (`user_id`),
   KEY `id_asset` (`id_asset`),
+  KEY `tags_old` (`tags_old`),
+  KEY `tags_new` (`tags_new`),
+  CONSTRAINT `id_surveryreq_tag_old` FOREIGN KEY (`tags_old`) REFERENCES `tags` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `id_surveyreq_asset` FOREIGN KEY (`id_asset`) REFERENCES `asset` (`id_asset`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `id_surveyreq_tag_new` FOREIGN KEY (`tags_new`) REFERENCES `tags` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `id_surveyreq_userid` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Dumping data for table asset.survey_request: ~1 rows (approximately)
-REPLACE INTO `survey_request` (`id_transaksi_jual_sewa`, `user_id`, `id_asset`, `dateline`, `status_request`, `data_lengkap`, `usage_old`, `usage_new`, `luas_old`, `luas_new`, `nilai_old`, `nilai_new`, `kondisi_old`, `kondisi_new`, `batas_koordinat_old`, `batas_koordinat_new`, `tags_old`, `tags_new`) VALUES
-	(1, 5, 1, '2024-08-31', 'O', 'N', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 -- Dumping structure for table asset.tags
 CREATE TABLE IF NOT EXISTS `tags` (
@@ -240,23 +245,29 @@ CREATE TABLE IF NOT EXISTS `tags` (
   `nama` varchar(255) NOT NULL DEFAULT '',
   `detail` text NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.tags: ~0 rows (approximately)
+-- Dumping data for table asset.tags: ~2 rows (approximately)
+REPLACE INTO `tags` (`id`, `nama`, `detail`) VALUES
+	(1, 'cafe', ''),
+	(2, 'kantor', '');
 
 -- Dumping structure for table asset.transaction_request
 CREATE TABLE IF NOT EXISTS `transaction_request` (
   `id_transaksi_jual_sewa` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) DEFAULT NULL,
   `id_asset` int(11) DEFAULT NULL,
+  `perusahaan_id` int(11) NOT NULL,
   `tipe` varchar(50) DEFAULT NULL,
   `masa_sewa` date DEFAULT NULL,
   `meeting_log` text DEFAULT NULL,
   PRIMARY KEY (`id_transaksi_jual_sewa`),
   KEY `user_id` (`user_id`),
   KEY `id_asset` (`id_asset`),
+  KEY `perusahaan_id` (`perusahaan_id`),
   CONSTRAINT `FK_transactionreq_userid` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `id_transactionreq_asset` FOREIGN KEY (`id_asset`) REFERENCES `asset` (`id_asset`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  CONSTRAINT `id_transactionreq_asset` FOREIGN KEY (`id_asset`) REFERENCES `asset` (`id_asset`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `id_transactionreq_perusahaan` FOREIGN KEY (`perusahaan_id`) REFERENCES `perusahaan` (`perusahaan_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Dumping data for table asset.transaction_request: ~0 rows (approximately)
@@ -267,57 +278,48 @@ CREATE TABLE IF NOT EXISTS `user` (
   `username` varchar(50) NOT NULL,
   `password` varchar(50) NOT NULL,
   `nama_lengkap` varchar(50) DEFAULT NULL,
-  `alamat` varchar(50) DEFAULT NULL,
+  `alamat` varchar(50) NOT NULL DEFAULT '',
   `jenis_kelamin` enum('L','P') DEFAULT 'L',
   `tanggal_lahir` date DEFAULT NULL,
   `email` varchar(50) NOT NULL,
   `nomor_telepon` varchar(13) NOT NULL,
   `foto_profil` varchar(50) DEFAULT '',
   `ktp` varchar(225) DEFAULT '',
-  `created_at` datetime DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
   `deleted_at` datetime DEFAULT NULL,
   `updated_at` datetime DEFAULT NULL,
-  `login_timestamp` datetime DEFAULT NULL,
+  `login_timestamp` datetime DEFAULT current_timestamp(),
   PRIMARY KEY (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.user: ~6 rows (approximately)
-REPLACE INTO `user` (`user_id`, `username`, `password`, `nama_lengkap`, `alamat`, `jenis_kelamin`, `tanggal_lahir`, `email`, `nomor_telepon`, `foto_profil`, `ktp`, `created_at`, `deleted_at`, `updated_at`, `login_timestamp`) VALUES
-	(1, 'superadmin1', 'am12345', 'superadmin1', '', 'L', '2024-08-08', 'superadmin1@gmail.com', '08987654321', '', '', '2024-08-08 14:02:36', NULL, NULL, '2024-08-14 13:07:00'),
-	(2, 'admin_surveyor', 'am12345', 'admin_surveyor', '', 'L', '2024-08-08', 'admin_surveyor@gmail.com', '08987654321', '', '', '2024-08-08 14:03:05', NULL, NULL, '2024-08-08 14:03:05'),
-	(3, 'admin_verifikator', 'am12345', 'admin_verifikator', '', 'L', '2024-08-08', 'admin_verifikator@gmail.com', '08987654321', '', '', '2024-08-08 14:03:17', NULL, NULL, '2024-08-08 14:03:17'),
-	(4, 'test_db_server', 'am12345', 'test_db_server', '', 'L', '2024-08-08', 'test_db_server@gmail.com', '08987654321', '', '', '2024-08-08 18:15:29', NULL, NULL, '2024-08-08 18:15:29'),
-	(5, 'ubahserver', 'ubahserver', 'test_surveyor', '', 'L', '2024-08-09', 'ubahserver@gmail.com', '0123456789', '', '', '2024-08-09 11:43:54', NULL, '2024-08-14 16:20:43', '2024-08-14 12:53:18'),
-	(6, 'test_surveyor_2', 'am12345', 'test_surveyor_2', '', 'L', '2024-08-14', 'test_surveyor_2@gmail.com', '08987654321', '', '', '2024-08-14 14:42:33', NULL, NULL, '2024-08-14 14:42:33');
+-- Dumping data for table asset.user: ~0 rows (approximately)
 
 -- Dumping structure for table asset.user_detail
 CREATE TABLE IF NOT EXISTS `user_detail` (
+  `id_user_detail` int(11) NOT NULL AUTO_INCREMENT,
   `user_detail_id` int(11) DEFAULT NULL,
   `user_kelas_id` int(11) NOT NULL,
   `status` enum('V','N') NOT NULL DEFAULT 'N',
   `tipe` int(11) DEFAULT NULL,
   `first_login` enum('Y','N') NOT NULL DEFAULT 'Y',
   `denied_by_admin` enum('Y','N') NOT NULL DEFAULT 'N',
+  `kode_otp` int(4) NOT NULL DEFAULT 0,
+  `status_verifikasi_otp` enum('V','N') NOT NULL DEFAULT 'N',
+  PRIMARY KEY (`id_user_detail`),
   KEY `user_detail_id` (`user_detail_id`),
   KEY `kelas` (`user_kelas_id`),
   CONSTRAINT `user_detail_id` FOREIGN KEY (`user_detail_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `user_kelas_id` FOREIGN KEY (`user_kelas_id`) REFERENCES `kelas` (`kelas_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.user_detail: ~6 rows (approximately)
-REPLACE INTO `user_detail` (`user_detail_id`, `user_kelas_id`, `status`, `tipe`, `first_login`, `denied_by_admin`) VALUES
-	(1, 1, 'N', 8, 'Y', 'N'),
-	(2, 1, 'N', 8, 'Y', 'N'),
-	(3, 1, 'N', 8, 'Y', 'N'),
-	(4, 1, 'N', 8, 'Y', 'N'),
-	(5, 1, 'N', 8, 'Y', 'N'),
-	(6, 1, 'N', 7, 'Y', 'N');
+-- Dumping data for table asset.user_detail: ~0 rows (approximately)
 
 -- Dumping structure for table asset.user_perusahaan
 CREATE TABLE IF NOT EXISTS `user_perusahaan` (
-  `id_user_perusahaan` int(11) DEFAULT NULL,
+  `id_user_perusahaan` int(11) NOT NULL AUTO_INCREMENT,
   `id_user` int(11) DEFAULT NULL,
   `id_perusahaan` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id_user_perusahaan`),
   KEY `id_user` (`id_user`),
   KEY `id_perusahaan` (`id_perusahaan`),
   CONSTRAINT `id_userperusahaan_perusahaan` FOREIGN KEY (`id_perusahaan`) REFERENCES `perusahaan` (`perusahaan_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
@@ -336,16 +338,9 @@ CREATE TABLE IF NOT EXISTS `user_privilege` (
   KEY `Column 2` (`user_id`) USING BTREE,
   CONSTRAINT `FK_userprivilege_privilegeid` FOREIGN KEY (`privilege_id`) REFERENCES `privilege` (`privilege_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_userprivilege_userid` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.user_privilege: ~6 rows (approximately)
-REPLACE INTO `user_privilege` (`user_privilege_id`, `privilege_id`, `user_id`) VALUES
-	(1, 17, 1),
-	(2, 17, 2),
-	(3, 17, 3),
-	(4, 17, 4),
-	(5, 17, 5),
-	(6, 17, 6);
+-- Dumping data for table asset.user_privilege: ~0 rows (approximately)
 
 -- Dumping structure for table asset.user_role
 CREATE TABLE IF NOT EXISTS `user_role` (
@@ -357,16 +352,9 @@ CREATE TABLE IF NOT EXISTS `user_role` (
   KEY `role_id` (`role_id`),
   CONSTRAINT `FK_userrole_roleid` FOREIGN KEY (`role_id`) REFERENCES `role` (`role_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_userrole_userid` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Dumping data for table asset.user_role: ~6 rows (approximately)
-REPLACE INTO `user_role` (`user_role_id`, `user_id`, `role_id`) VALUES
-	(1, 1, 8),
-	(2, 2, 8),
-	(3, 3, 8),
-	(4, 4, 8),
-	(5, 5, 7),
-	(6, 6, 7);
+-- Dumping data for table asset.user_role: ~0 rows (approximately)
 
 /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
 /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;
