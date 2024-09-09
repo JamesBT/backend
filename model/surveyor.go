@@ -54,7 +54,15 @@ func LoginSurveyor(akun string) (Response, error) {
 	defer stmt.Close()
 
 	// cek apakah password benar atau tidak
-	queryinsert := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin, s.lokasi, s.availability_surveyor FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id JOIN surveyor s ON u.user_id = s.user_id WHERE u.username = ? AND u.password = ?;"
+	queryinsert := `
+	SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, 
+	u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, 
+	ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin, 
+	s.lokasi, s.availability_surveyor 
+	FROM user u 
+	JOIN user_detail ud ON u.user_id = ud.user_detail_id 
+	JOIN surveyor s ON u.user_id = s.user_id 
+	WHERE u.username = ? AND u.password = ?;`
 	stmtinsert, err := con.Prepare(queryinsert)
 	if err != nil {
 		res.Status = 401
@@ -771,7 +779,7 @@ func GetSurveyorByUserId(user_id string) (Response, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var _surveyReq SurveyRequest
-		err := rows.Scan(&_surveyReq.Id_transaksi_jual_sewa, &_surveyReq.User_id, &_surveyReq.Id_asset, &_surveyReq.Created_at, &_surveyReq.Dateline, &_surveyReq.Status_request, &_surveyReq.Status_verifikasi, &_surveyReq.Data_lengkap, &_surveyReq.Usage_old, &_surveyReq.Usage_new, &_surveyReq.Luas_old, &_surveyReq.Luas_new, &_surveyReq.Nilai_old, &_surveyReq.Nilai_new, &_surveyReq.Kondisi_old, &_surveyReq.Kondisi_new, &_surveyReq.Batas_koordinat_old, &_surveyReq.Batas_koordinat_new, &_surveyReq.Tags_old, &_surveyReq.Tags_new)
+		err := rows.Scan(&_surveyReq.Id_transaksi_jual_sewa, &_surveyReq.User_id, &_surveyReq.Id_asset, &_surveyReq.Created_at, &_surveyReq.Dateline, &_surveyReq.Status_request, &_surveyReq.Status_verifikasi, &_surveyReq.Data_lengkap, &_surveyReq.Usage_old, &_surveyReq.Usage_new, &_surveyReq.Luas_old, &_surveyReq.Luas_new, &_surveyReq.Nilai_old, &_surveyReq.Nilai_new, &_surveyReq.Kondisi_old, &_surveyReq.Kondisi_new, &_surveyReq.Titik_koordinat_old, &_surveyReq.Titik_koordinat_new, &_surveyReq.Batas_koordinat_old, &_surveyReq.Batas_koordinat_new, &_surveyReq.Tags_old, &_surveyReq.Tags_new)
 		if err != nil {
 			res.Status = 401
 			res.Message = "scan gagal"

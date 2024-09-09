@@ -63,3 +63,5 @@
 {<2024-08-28 16:31:31>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
 {<2024-08-28 16:32:42>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
 {<2024-08-28 16:35:58>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-08-28 17:03:02>;Ip:::1;Nama API:UploadFoto;lenRespon:3;LenParam:3;}
+{<2024-08-28 17:03:42>;Ip:::1;Nama API:UploadFoto;lenRespon:3;LenParam:3;}

@@ -2,6 +2,7 @@ package model
 
 import (
 	"TemplateProject/db"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -124,7 +125,8 @@ func CreatePerusahaan(file_kepemilikan *multipart.FileHeader, file_perusahaan *m
 	dtPerusahaan.Tipe = tipe
 	dtPerusahaan.Dokumen_kepemilikan = pathFile
 	dtPerusahaan.Dokumen_perusahaan = pathFilePerusahaan
-	dtPerusahaan.Modal = modal
+	tempModal, _ := strconv.Atoi(modal)
+	dtPerusahaan.Modal = float64(tempModal)
 	dtPerusahaan.Deskripsi = deskripsi
 
 	// masukin ke user_perusahaan
@@ -218,12 +220,12 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 	}
 
 	query := `
-		SELECT p.perusahaan_id, p.username, p.lokasi, p.tipe, p.kelas, p.dokumen_kepemilikan, p.dokumen_perusahaan,
-			p.modal_awal,p.deskripsi, u.user_id, u.username 
+		SELECT p.perusahaan_id, p.status, p.name, p.username, p.lokasi, p.tipe, IFNULL(p.kelas,0), p.dokumen_kepemilikan, p.dokumen_perusahaan,
+			p.modal_awal,p.deskripsi, p.created_at, u.user_id, u.username, u.nama_lengkap 
 		FROM perusahaan p
 		LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
 		LEFT JOIN user u on up.id_user = u.user_id
-		WHERE p.perusahaan_id = ?
+		WHERE p.perusahaan_id = ? 
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -246,10 +248,10 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 
 	for rows.Next() {
 		var usr User
-		err = rows.Scan(&dtPerusahaan.Id, &dtPerusahaan.Username, &dtPerusahaan.Lokasi, &dtPerusahaan.Tipe,
+		err = rows.Scan(&dtPerusahaan.Id, &dtPerusahaan.Status, &dtPerusahaan.Nama, &dtPerusahaan.Username, &dtPerusahaan.Lokasi, &dtPerusahaan.Tipe,
 			&dtPerusahaan.Kelas,
 			&dtPerusahaan.Dokumen_kepemilikan, &dtPerusahaan.Dokumen_perusahaan, &dtPerusahaan.Modal,
-			&dtPerusahaan.Deskripsi, &usr.Id, &usr.Username)
+			&dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt, &usr.Id, &usr.Username, &usr.Nama_lengkap)
 		if err != nil {
 			res.Status = 401
 			res.Message = "Failed to scan row"
@@ -289,7 +291,7 @@ func GetPerusahaanByUserId(user_id string) (Response, error) {
 		       p.dokumen_kepemilikan, p.dokumen_perusahaan, p.modal_awal, p.deskripsi, p.created_at
 		FROM perusahaan p
 		JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
-		WHERE up.id_user = ? AND p.status = 'N'
+		WHERE up.id_user = ?
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -334,6 +336,80 @@ func GetPerusahaanByUserId(user_id string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
 	res.Data = arrPerusahaan
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllPerusahaanDetailed() (Response, error) {
+	var res Response
+	var dtPerusahaan = []UserPerusahaan{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT p.perusahaan_id, p.name, 
+		COUNT(DISTINCT up.id_user) AS user_count, 
+		COUNT(DISTINCT tr.id_transaksi_jual_sewa) AS transaction_count 
+	FROM perusahaan p 
+	LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan 
+	LEFT JOIN transaction_request tr ON p.perusahaan_id = tr.perusahaan_id 
+	WHERE p.status = 'A'
+	GROUP BY p.perusahaan_id
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var _dtUserPerusahaan UserPerusahaan
+		err := rows.Scan(&_dtUserPerusahaan.Perusahaan_id, &_dtUserPerusahaan.Name, &_dtUserPerusahaan.UserCount, &_dtUserPerusahaan.TransactionCount)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		dtPerusahaan = append(dtPerusahaan, _dtUserPerusahaan)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(dtPerusahaan) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtPerusahaan
 
 	defer db.DbClose(con)
 	return res, nil
@@ -401,6 +477,60 @@ func HomeUserPerusahaan(perusahaan_id string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
 	res.Data = homeuser
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func UpdatePerusahaanById(input string) (Response, error) {
+	var res Response
+
+	type TempUpdatePerusahaan struct {
+		Id        int    `json:"id"`
+		Username  string `json:"username"`
+		Lokasi    string `json:"lokasi"`
+		Tipe      string `json:"tipe"`
+		Modal     string `json:"modal"`
+		Deskripsi string `json:"deskripsi"`
+	}
+	var dtPerusahaan TempUpdatePerusahaan
+	err := json.Unmarshal([]byte(input), &dtPerusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE perusahaan SET username = ?, lokasi=?, tipe=?,modal_awal=?,deskripsi=?,updated_at=NOW() WHERE perusahaan_id = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(dtPerusahaan.Username, dtPerusahaan.Lokasi, dtPerusahaan.Tipe, dtPerusahaan.Modal, dtPerusahaan.Deskripsi, dtPerusahaan.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = dtPerusahaan
 
 	defer db.DbClose(con)
 	return res, nil

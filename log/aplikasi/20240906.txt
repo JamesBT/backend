@@ -1,0 +1,5 @@
+{<2024-09-06 13:21:28>;Ip:::1;Nama API:UploadFoto;lenRespon:0;LenParam:3;}
+{<2024-09-06 13:22:27>;Ip:::1;Nama API:UploadFoto;lenRespon:0;LenParam:3;}
+{<2024-09-06 13:23:15>;Ip:::1;Nama API:UploadFoto;lenRespon:0;LenParam:3;}
+{<2024-09-06 13:24:44>;Ip:::1;Nama API:UploadFoto;lenRespon:0;LenParam:3;}
+{<2024-09-06 13:28:31>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}

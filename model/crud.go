@@ -382,10 +382,10 @@ func GetAllUser() (Response, error) {
 		ur.role_id, r.nama_role, up.privilege_id, p.nama_privilege
 	FROM user u 
 	INNER JOIN user_detail ud ON u.user_id = ud.user_detail_id
-	JOIN user_role ur ON u.user_id = ur.user_id
-	JOIN user_privilege up ON u.user_id = up.user_id
-	JOIN role r ON ur.role_id = r.role_id
-	JOIN privilege p ON up.privilege_id = p.privilege_id
+	LEFT JOIN user_role ur ON u.user_id = ur.user_id
+	LEFT JOIN user_privilege up ON u.user_id = up.user_id
+	LEFT JOIN role r ON ur.role_id = r.role_id
+	LEFT JOIN privilege p ON up.privilege_id = p.privilege_id
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -498,6 +498,86 @@ func GetUserById(id_user string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = usr
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func GetUserDetailedById(id_user string) (Response, error) {
+	var res Response
+	var usr User
+	var perusahaanList []Perusahaan
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka koneksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT user_id, username, nama_lengkap, password, email, nomor_telepon FROM user WHERE user_id = ?"
+	stmt, err := con.Prepare(query)
+
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(id_user)
+	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.Password, &usr.Email, &usr.No_telp)
+	if err != nil {
+		res.Status = 401
+		res.Message = "rows gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query = `
+		SELECT p.perusahaan_id, p.name, p.username, p.lokasi, p.tipe, p.modal_awal, p.deskripsi, p.created_at 
+		FROM perusahaan p
+		LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
+		WHERE up.id_user = ?
+	`
+	stmt, err = con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Failed to prepare statement"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Failed to execute query"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var perusahaan Perusahaan
+		err = rows.Scan(&perusahaan.Id, &perusahaan.Nama, &perusahaan.Username, &perusahaan.Lokasi, &perusahaan.Tipe, &perusahaan.Modal, &perusahaan.Deskripsi, &perusahaan.CreatedAt)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Failed to scan company details"
+			res.Data = err.Error()
+			return res, err
+		}
+		perusahaanList = append(perusahaanList, perusahaan)
+	}
+
+	usr.PerusahaanJoined = perusahaanList
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
@@ -646,6 +726,60 @@ func UpdateUser(filefoto *multipart.FileHeader, userid, username, nama_lengkap, 
 
 	err = UpdateDataFotoPath("user", "foto_profil", pathFotoFile, "user_id", userId)
 	if err != nil {
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = result
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func UpdateUserById(input string) (Response, error) {
+	var res Response
+
+	type TempUpdateUser struct {
+		Id       int    `json:"id"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
+		No_telp  string `json:"no_telp"`
+	}
+
+	var dtUser TempUpdateUser
+	err := json.Unmarshal([]byte(input), &dtUser)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE user SET username = ?, password = ?, email = ?, nomor_telepon = ?, updated_at = NOW() WHERE user_id = ? "
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(dtUser.Username, dtUser.Password, dtUser.Email, dtUser.No_telp, dtUser.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
 		return res, err
 	}
 
@@ -1014,6 +1148,80 @@ func GetAllUserByPerusahaanId(id_perusahaan string) (Response, error) {
 			return res, err
 		}
 		arrUser = append(arrUser, dtUser)
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrUser
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func AdminUserManagement() (Response, error) {
+	var res Response
+	type TempAdminUser struct {
+		IdUser          int    `json:"id"`
+		Nama            string `json:"nama"`
+		TotalPerusahaan int    `json:"totalPerusahaan"`
+		TotalTransaksi  int    `json:"totalTransaksi"`
+	}
+	var arrUser = []TempAdminUser{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT u.nama_lengkap, u.user_id, 
+		COUNT(DISTINCT up.id_perusahaan) AS totalPerusahaan, 
+		COUNT(DISTINCT tr.id_transaksi_jual_sewa) AS totalTransaksi
+	FROM user u 
+	INNER JOIN user_detail ud ON u.user_id = ud.user_detail_id
+	LEFT JOIN user_perusahaan up ON u.user_id = up.id_user
+	LEFT JOIN transaction_request tr ON u.user_id = tr.user_id
+	WHERE ud.status = 'V'
+	GROUP BY u.user_id
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "Failed to execute query"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tempUser TempAdminUser
+		err = rows.Scan(&tempUser.Nama, &tempUser.IdUser, &tempUser.TotalPerusahaan, &tempUser.TotalTransaksi)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Failed to scan row"
+			res.Data = err.Error()
+			return res, err
+		}
+		arrUser = append(arrUser, tempUser)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "Row iteration failed"
+		res.Data = err.Error()
+		return res, err
 	}
 
 	res.Status = http.StatusOK
@@ -1913,8 +2121,9 @@ func VerifyPerusahaanAccept(input string) (Response, error) {
 	var res Response
 
 	type temp_verif_perusahaan_acc struct {
-		PerusahaanId int `json:"perusahaan_id"`
-		Kelas        int `json:"kelas"`
+		PerusahaanId int    `json:"perusahaan_id"`
+		Kelas        int    `json:"kelas"`
+		Field        string `json:"business_field"`
 	}
 	var requestacc temp_verif_perusahaan_acc
 	err := json.Unmarshal([]byte(input), &requestacc)
@@ -1933,7 +2142,7 @@ func VerifyPerusahaanAccept(input string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE perusahaan SET kelas=?,status='V' WHERE perusahaan_id = ?"
+	query := "UPDATE perusahaan SET kelas=?,status='A' WHERE perusahaan_id = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -1949,6 +2158,28 @@ func VerifyPerusahaanAccept(input string) (Response, error) {
 		res.Message = "stmt gagal"
 		res.Data = err.Error()
 		return res, err
+	}
+
+	// Insert into perusahaan_business table
+	insertQuery := "INSERT INTO perusahaan_business (id_perusahaan, id_business) VALUES (?, ?)"
+	fields := strings.Split(requestacc.Field, ",")
+	for _, field := range fields {
+		insertStmt, err := con.Prepare(insertQuery)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer insertStmt.Close()
+
+		_, err = insertStmt.Exec(requestacc.PerusahaanId, field)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Gagal memasukkan ke perusahaan_business"
+			res.Data = err.Error()
+			return res, err
+		}
 	}
 
 	res.Status = http.StatusOK
@@ -2014,7 +2245,8 @@ func VerifyPerusahaanDecline(input string) (Response, error) {
 	var res Response
 
 	type temp_verif_perusahaan_deny struct {
-		PerusahaanId int `json:"perusahaan_id"`
+		PerusahaanId int    `json:"perusahaan_id"`
+		Alasan       string `json:"decline_message"`
 	}
 	var requestacc temp_verif_perusahaan_deny
 	err := json.Unmarshal([]byte(input), &requestacc)
@@ -2033,7 +2265,7 @@ func VerifyPerusahaanDecline(input string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE perusahaan SET status='N',denied_by_admin='Y' WHERE perusahaan_id = ?"
+	query := "UPDATE perusahaan SET status='D',denied_by_admin='Y',`alasan`=? WHERE perusahaan_id = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -2042,8 +2274,8 @@ func VerifyPerusahaanDecline(input string) (Response, error) {
 		return res, err
 	}
 	defer stmt.Close()
-
-	result, err := stmt.Exec(requestacc.PerusahaanId)
+	fmt.Println(requestacc.Alasan)
+	result, err := stmt.Exec(requestacc.Alasan, requestacc.PerusahaanId)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
@@ -2056,6 +2288,126 @@ func VerifyPerusahaanDecline(input string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
 	res.Data = result
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetVerifyPerusahaanDetailedById(id_perusahaan string) (Response, error) {
+	var res Response
+	type DetailVerifPerusahaan struct {
+		Perusahaan_id       int             `json:"perusahaan_id"`
+		Nama_perusahaan     string          `json:"perusahaan_nama"`
+		Nama_user           string          `json:"user_nama"`
+		Username_user       string          `json:"user_username"`
+		Created_at          string          `json:"created_at"`
+		Username_perusahaan string          `json:"perusahaan_username"`
+		Lokasi              string          `json:"lokasi"`
+		Tipe                string          `json:"tipe"`
+		Status              string          `json:"status"`
+		Kelas               int             `json:"kelas"`
+		Dokumen_kepemilikan string          `json:"dokumen_kepemilikan"`
+		Dokumen_perusahaan  string          `json:"dokumen_perusahaan"`
+		Modal_awal          string          `json:"modal"`
+		Deskripsi           string          `json:"deskripsi"`
+		Alasan              string          `json:"alasan"`
+		Field               []BusinessField `json:"field"`
+	}
+	var tempVerifPerusahaan DetailVerifPerusahaan
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// nama perusahaan + nama user + username(user) + tanggal waktu + username (perusahaan)
+	// lokasi + tipe + dokumen_kepemilikan + dokumen_perusahaan + modal awal + deskripsi
+	query := `
+		SELECT p.perusahaan_id, p.name, u.nama_lengkap, u.username, p.created_at, p.username,
+		p.lokasi, p.tipe, p.status, IFNULL(p.kelas,0), p.dokumen_kepemilikan, p.dokumen_perusahaan, p.modal_awal, p.deskripsi, p.alasan
+		FROM perusahaan p
+		LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
+		LEFT JOIN user u ON up.id_user = u.user_id
+		WHERE p.perusahaan_id = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(id_perusahaan)
+	err = stmt.QueryRow(nId).Scan(
+		&tempVerifPerusahaan.Perusahaan_id,
+		&tempVerifPerusahaan.Nama_perusahaan,
+		&tempVerifPerusahaan.Nama_user,
+		&tempVerifPerusahaan.Username_user,
+		&tempVerifPerusahaan.Created_at,
+		&tempVerifPerusahaan.Username_perusahaan,
+		&tempVerifPerusahaan.Lokasi,
+		&tempVerifPerusahaan.Tipe,
+		&tempVerifPerusahaan.Status,
+		&tempVerifPerusahaan.Kelas,
+		&tempVerifPerusahaan.Dokumen_kepemilikan,
+		&tempVerifPerusahaan.Dokumen_perusahaan,
+		&tempVerifPerusahaan.Modal_awal,
+		&tempVerifPerusahaan.Deskripsi,
+		&tempVerifPerusahaan.Alasan,
+	)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	queryPerusahaan := `
+	SELECT bf.* 
+	FROM business_field bf
+	LEFT JOIN perusahaan_business pb ON bf.id = pb.id_business
+	WHERE pb.id_perusahaan = ?
+	`
+	stmtPerusahaan, err := con.Prepare(queryPerusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtPerusahaan.Close()
+
+	resultPerusahaan, err := stmtPerusahaan.Query(nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer resultPerusahaan.Close()
+
+	var arrBusiness = []BusinessField{}
+	for resultPerusahaan.Next() {
+		var dtBusiness BusinessField
+		err = resultPerusahaan.Scan(&dtBusiness.Id, &dtBusiness.Nama, &dtBusiness.Detail)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+		arrBusiness = append(arrBusiness, dtBusiness)
+	}
+	tempVerifPerusahaan.Field = arrBusiness
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = tempVerifPerusahaan
 
 	defer db.DbClose(con)
 	return res, nil
@@ -2086,7 +2438,7 @@ func VerifyAssetAccept(input string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE survey_request SET status_request='F' WHERE id_transaksi_jual_sewa = ?"
+	query := "UPDATE survey_request SET status_request='F',status_verifikasi='V' WHERE id_transaksi_jual_sewa = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -2116,7 +2468,10 @@ func VerifyAssetAccept(input string) (Response, error) {
 	var temp_tags_old sql.NullString
 	var temp_tags_new sql.NullString
 
-	err = selectstmt.QueryRow(requestacc.SurveryReqId).Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Dateline, &dtSurveyReq.Status_request, &dtSurveyReq.Data_lengkap, &dtSurveyReq.Usage_old, &dtSurveyReq.Usage_new, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new, &dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new, &dtSurveyReq.Batas_koordinat_old, &dtSurveyReq.Batas_koordinat_new, &temp_tags_old, &temp_tags_new)
+	err = selectstmt.QueryRow(requestacc.SurveryReqId).Scan(
+		&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
+		&dtSurveyReq.Dateline, &dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Data_lengkap,
+		&dtSurveyReq.Usage_old, &dtSurveyReq.Usage_new, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new, &dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new, &dtSurveyReq.Titik_koordinat_old, &dtSurveyReq.Titik_koordinat_new, &dtSurveyReq.Batas_koordinat_old, &dtSurveyReq.Batas_koordinat_new, &temp_tags_old, &temp_tags_new)
 	if err != nil {
 		res.Status = 401
 		res.Message = "rows gagal"
@@ -2137,7 +2492,7 @@ func VerifyAssetAccept(input string) (Response, error) {
 	}
 
 	// update data asset dengan yang baru
-	updatequery := "UPDATE asset SET `kondisi`= ?,`batas_koordinat`= ?,`luas`= ?,`nilai`= ?,`usage`= ? WHERE `id_asset`= ?"
+	updatequery := "UPDATE asset SET `kondisi`= ?,`titik_koordinat`= ?,`batas_koordinat`= ?,`luas`= ?,`nilai`= ?,`usage`= ? WHERE `id_asset`= ?"
 	updatestmt, err := con.Prepare(updatequery)
 	if err != nil {
 		res.Status = 401
@@ -2147,7 +2502,7 @@ func VerifyAssetAccept(input string) (Response, error) {
 	}
 	defer updatestmt.Close()
 
-	_, err = updatestmt.Exec(dtSurveyReq.Kondisi_new, dtSurveyReq.Batas_koordinat_new, dtSurveyReq.Luas_new, dtSurveyReq.Nilai_new, dtSurveyReq.Usage_new, dtSurveyReq.Id_asset)
+	_, err = updatestmt.Exec(dtSurveyReq.Kondisi_new, dtSurveyReq.Titik_koordinat_new, dtSurveyReq.Batas_koordinat_new, dtSurveyReq.Luas_new, dtSurveyReq.Nilai_new, dtSurveyReq.Usage_new, dtSurveyReq.Id_asset)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
@@ -2173,7 +2528,7 @@ func VerifyAssetAccept(input string) (Response, error) {
 		return res, err
 	}
 
-	tempaset, _ := GetAssetById(string(dtSurveyReq.Id_asset))
+	tempaset, _ := GetAssetById(strconv.Itoa(dtSurveyReq.Id_asset))
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
@@ -2259,6 +2614,321 @@ func ReassignAsset(input string) (Response, error) {
 	return res, nil
 }
 
+func AcceptTransaction(input string) (Response, error) {
+	var res Response
+	type TranReqStatus struct {
+		Id           int    `json:"id"`
+		UserId       int    `json:"userId"`
+		PerusahaanId int    `json:"perusahaanId"`
+		AssetId      int    `json:"assetId"`
+		AssetNama    string `json:"assetNama"`
+		NamaProgress string `json:"namaProgress"`
+		Proposal     string `json:"proposal"`
+		Alasan       string `json:"alasan"`
+	}
+
+	var tempTranReq TranReqStatus
+	err := json.Unmarshal([]byte(input), &tempTranReq)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// ambil user id dari surveyor
+	query := `
+	UPDATE transaction_request SET status = 'A', alasan = ?
+	WHERE id_transaksi_jual_sewa = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(tempTranReq.Alasan, tempTranReq.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengupdate status"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	getProgressAndAssetQuery := `
+	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama 
+	FROM transaction_request tr
+	LEFT JOIN asset a ON tr.id_asset = a.id_asset
+	WHERE tr.id_transaksi_jual_sewa = ?
+	`
+	err = con.QueryRow(getProgressAndAssetQuery, tempTranReq.Id).Scan(&tempTranReq.AssetId, &tempTranReq.UserId, &tempTranReq.PerusahaanId, &tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengambil nama_progress, proposal, dan nama asset"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	insertProgressQuery := `
+	INSERT INTO progress (user_id, perusahaan_id, id_asset, nama, proposal) 
+	VALUES (?, ?, ?, ?, ?)
+	`
+	stmtProgress, err := con.Prepare(insertProgressQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtProgress.Close()
+
+	_, err = stmtProgress.Exec(tempTranReq.UserId, tempTranReq.PerusahaanId, tempTranReq.AssetId, tempTranReq.NamaProgress, tempTranReq.Proposal)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal memasukkan data ke progress"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = nil
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func DeclineTransaction(input string) (Response, error) {
+	var res Response
+	type TranReqStatus struct {
+		Id           int    `json:"id"`
+		UserId       int    `json:"userId"`
+		PerusahaanId int    `json:"perusahaanId"`
+		AssetId      int    `json:"assetId"`
+		AssetNama    string `json:"assetNama"`
+		NamaProgress string `json:"namaProgress"`
+		Proposal     string `json:"proposal"`
+		Alasan       string `json:"alasan"`
+	}
+
+	var tempTranReq TranReqStatus
+	err := json.Unmarshal([]byte(input), &tempTranReq)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// ambil user id dari surveyor
+	query := `
+	UPDATE transaction_request SET status = 'D', alasan = ?
+	WHERE id_transaksi_jual_sewa = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(tempTranReq.Alasan, tempTranReq.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengupdate status"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	getProgressAndAssetQuery := `
+	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama 
+	FROM transaction_request tr
+	LEFT JOIN asset a ON tr.id_asset = a.id_asset
+	WHERE tr.id_transaksi_jual_sewa = ?
+	`
+	err = con.QueryRow(getProgressAndAssetQuery, tempTranReq.Id).Scan(&tempTranReq.AssetId, &tempTranReq.UserId, &tempTranReq.PerusahaanId, &tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengambil nama_progress, proposal, dan nama asset"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	insertProgressQuery := `
+	INSERT INTO progress (user_id, perusahaan_id, id_asset, nama, proposal, status) 
+	VALUES (?, ?, ?, ?, ?, 'D')
+	`
+	stmtProgress, err := con.Prepare(insertProgressQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtProgress.Close()
+
+	_, err = stmtProgress.Exec(tempTranReq.UserId, tempTranReq.PerusahaanId, tempTranReq.AssetId, tempTranReq.NamaProgress, tempTranReq.Proposal)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal memasukkan data ke progress"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = nil
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllVerify() (Response, error) {
+	var res Response
+
+	type TempVerifyPerusahaan struct {
+		Id                  int    `json:"id_perusahaan"`
+		Status              string `json:"status"`
+		Nama                string `json:"nama"`
+		Username            string `json:"username"`
+		NamaUser            string `json:"namauser"`
+		NamaLengkapUser     string `json:"namalengkapuser"`
+		Lokasi              string `json:"lokasi"`
+		Kelas               int    `json:"kelas"`
+		Tipe                string `json:"tipe"`
+		Dokumen_kepemilikan string `json:"dokumen_kepemilikan"`
+		Dokumen_perusahaan  string `json:"dokumen_perusahaan"`
+		Modal               string `json:"modal"`
+		Deskripsi           string `json:"deskripsi"`
+		CreatedAt           string `json:"created_at"`
+		UserJoined          []User
+	}
+	type AllVerify struct {
+		Users      []User                 `json:"users"`
+		Perusahaan []TempVerifyPerusahaan `json:"perusahaan"`
+	}
+	var allVerify AllVerify
+	var arrUsers = []User{}
+	var arrPerusahaan = []TempVerifyPerusahaan{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer db.DbClose(con)
+
+	// Query for perusahaan data
+	queryPerusahaan := `
+	SELECT p.perusahaan_id, p.status, p.name, p.username, u.username, u.nama_lengkap, p.lokasi, p.tipe, IFNULL(p.kelas,0), p.dokumen_kepemilikan, 
+	p.dokumen_perusahaan, p.modal_awal, p.deskripsi, p.created_at 
+	FROM perusahaan p
+	LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
+	LEFT JOIN user u ON up.id_user = u.user_id
+	ORDER BY p.created_at DESC`
+	stmtPerusahaan, err := con.Prepare(queryPerusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtPerusahaan.Close()
+
+	resultPerusahaan, err := stmtPerusahaan.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer resultPerusahaan.Close()
+
+	for resultPerusahaan.Next() {
+		var dtPerusahaan TempVerifyPerusahaan
+		err = resultPerusahaan.Scan(&dtPerusahaan.Id, &dtPerusahaan.Status, &dtPerusahaan.Nama, &dtPerusahaan.Username, &dtPerusahaan.NamaUser, &dtPerusahaan.NamaLengkapUser, &dtPerusahaan.Lokasi, &dtPerusahaan.Tipe, &dtPerusahaan.Kelas, &dtPerusahaan.Dokumen_kepemilikan, &dtPerusahaan.Dokumen_perusahaan, &dtPerusahaan.Modal, &dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+		arrPerusahaan = append(arrPerusahaan, dtPerusahaan)
+	}
+	allVerify.Perusahaan = arrPerusahaan
+
+	// Query for user data
+	queryUser := `
+	SELECT u.user_id, u.username, u.password, u.nama_lengkap, u.alamat, u.jenis_kelamin, 
+	u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.status
+	FROM user u
+	LEFT JOIN user_detail ud ON u.user_id = ud.user_detail_id
+	ORDER BY u.created_at DESC`
+	stmtUser, err := con.Prepare(queryUser)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtUser.Close()
+
+	resultUser, err := stmtUser.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer resultUser.Close()
+
+	for resultUser.Next() {
+		var dtUser User
+		err = resultUser.Scan(&dtUser.Id, &dtUser.Username, &dtUser.Password, &dtUser.Nama_lengkap,
+			&dtUser.Alamat, &dtUser.Jenis_kelamin, &dtUser.Tgl_lahir, &dtUser.Email, &dtUser.No_telp, &dtUser.Foto_profil,
+			&dtUser.Ktp, &dtUser.Status,
+		)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+		arrUsers = append(arrUsers, dtUser)
+	}
+	allVerify.Users = arrUsers
+
+	// Return the combined results
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = allVerify
+
+	return res, nil
+}
+
 // BELUM SELESAI
 func ForgotPass(email string) (Response, error) {
 	var res Response
@@ -2296,4 +2966,269 @@ func sendMail(to []string, cc []string, subject, message string) error {
 	}
 
 	return nil
+}
+
+func CreateNotification(input string) (Response, error) {
+	var res Response
+	var kirimnotif Notification
+	err := json.Unmarshal([]byte(input), &kirimnotif)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal unmarshal JSON"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	DeleteNotification()
+
+	query := "INSERT INTO notification (user_id_sender, user_id_receiver, perusahaan_id_receiver, created_at, notification_title, notification_detail) VALUES (?,?,?,NOW(),?,?)"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(kirimnotif.User_id_sender, kirimnotif.User_id_receiver, kirimnotif.Perusahaan_id_receiver, kirimnotif.Title, kirimnotif.Detail)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	notifId, err := result.LastInsertId()
+	if err != nil {
+		res.Status = 500
+		res.Message = "gagal mendapatkan user ID"
+		res.Data = err.Error()
+		return res, err
+	}
+	kirimnotif.Notification_id = int(notifId)
+
+	var tempNotif Response
+	tempNotif, _ = GetNotificationById(strconv.Itoa(kirimnotif.Notification_id))
+	res.Status = http.StatusOK
+	res.Message = "Berhasil kirim notifikasi"
+	res.Data = tempNotif.Data
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetNotificationById(id string) (Response, error) {
+	var res Response
+	var dtNotif Notification
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	DeleteNotification()
+
+	query := `
+	SELECT *
+	FROM notification
+	WHERE notification_id = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+	nId, _ := strconv.Atoi(id)
+	err = stmt.QueryRow(nId).Scan(
+		&dtNotif.Notification_id, &dtNotif.User_id_sender, &dtNotif.User_id_receiver,
+		&dtNotif.Created_at, &dtNotif.Title, &dtNotif.Detail,
+	)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtNotif
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetNotificationByUserIdReceiver(user_id string) (Response, error) {
+	var res Response
+	var arrNotification []Notification
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	DeleteNotification()
+
+	query := `
+	SELECT * 
+	FROM notification
+	WHERE user_id_receiver = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(user_id)
+	rows, err := stmt.Query(nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var dtNotif Notification
+		err := rows.Scan(
+			&dtNotif.Notification_id, &dtNotif.User_id_sender,
+			&dtNotif.User_id_receiver, &dtNotif.Perusahaan_id_receiver, &dtNotif.Created_at,
+			&dtNotif.Title, &dtNotif.Detail,
+		)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		arrNotification = append(arrNotification, dtNotif)
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrNotification
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetNotificationByPerusahaanIdReceiver(perusahaan_id string) (Response, error) {
+	var res Response
+	var arrNotification []Notification
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	DeleteNotification()
+
+	query := `
+	SELECT * 
+	FROM notification
+	WHERE perusahaan_id_receiver = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(perusahaan_id)
+	rows, err := stmt.Query(nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var dtNotif Notification
+		err := rows.Scan(
+			&dtNotif.Notification_id, &dtNotif.User_id_sender,
+			&dtNotif.User_id_receiver, &dtNotif.Perusahaan_id_receiver, &dtNotif.Created_at,
+			&dtNotif.Title, &dtNotif.Detail,
+		)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		arrNotification = append(arrNotification, dtNotif)
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrNotification
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func DeleteNotification() (Response, error) {
+	var res Response
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "DELETE FROM notification WHERE created_at < NOW() - INTERVAL 6 MONTH"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil menghapus notifikasi lama"
+
+	return res, nil
 }

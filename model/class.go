@@ -7,24 +7,25 @@ type Response struct {
 }
 
 type User struct {
-	Id              int         `json:"id"`
-	Username        string      `json:"username"`
-	Password        string      `json:"password"`
-	Nama_lengkap    string      `json:"nama_lengkap"`
-	Alamat          string      `json:"alamat"`
-	Jenis_kelamin   string      `json:"jenis_kelamin"`
-	Tgl_lahir       string      `json:"tgl_lahir"`
-	Email           string      `json:"email"`
-	No_telp         string      `json:"no_telp"`
-	Foto_profil     string      `json:"foto_profil"`
-	Ktp             string      `json:"ktp"`
-	Kelas           int         `json:"kelas"`
-	Status          string      `json:"status"`
-	Tipe            int         `json:"tipe"`
-	First_login     string      `json:"first_login"`
-	Denied_by_admin string      `json:"denied_by_admin"`
-	UserRole        []Role      `json:"user_role"`
-	UserPrivilege   []Privilege `json:"user_privilege"`
+	Id               int         `json:"id"`
+	Username         string      `json:"username"`
+	Password         string      `json:"password"`
+	Nama_lengkap     string      `json:"nama_lengkap"`
+	Alamat           string      `json:"alamat"`
+	Jenis_kelamin    string      `json:"jenis_kelamin"`
+	Tgl_lahir        string      `json:"tgl_lahir"`
+	Email            string      `json:"email"`
+	No_telp          string      `json:"no_telp"`
+	Foto_profil      string      `json:"foto_profil"`
+	Ktp              string      `json:"ktp"`
+	Kelas            int         `json:"kelas"`
+	Status           string      `json:"status"`
+	Tipe             int         `json:"tipe"`
+	First_login      string      `json:"first_login"`
+	Denied_by_admin  string      `json:"denied_by_admin"`
+	UserRole         []Role      `json:"user_role"`
+	UserPrivilege    []Privilege `json:"user_privilege"`
+	PerusahaanJoined []Perusahaan
 }
 
 type Asset struct {
@@ -60,19 +61,26 @@ type Asset struct {
 	ChildAssets       []Asset
 }
 
+type BusinessField struct {
+	Id     int    `json:"id"`
+	Nama   string `json:"nama"`
+	Detail string `json:"detail"`
+}
+
 type Perusahaan struct {
-	Id                  int    `json:"id_perusahaan"`
-	Status              string `json:"status"`
-	Nama                string `json:"nama"`
-	Username            string `json:"username"`
-	Lokasi              string `json:"lokasi"`
-	Kelas               int    `json:"kelas"`
-	Tipe                string `json:"tipe"`
-	Dokumen_kepemilikan string `json:"dokumen_kepemilikan"`
-	Dokumen_perusahaan  string `json:"dokumen_perusahaan"`
-	Modal               string `json:"modal"`
-	Deskripsi           string `json:"deskripsi"`
-	CreatedAt           string `json:"created_at"`
+	Id                  int     `json:"id_perusahaan"`
+	Status              string  `json:"status"`
+	Nama                string  `json:"nama"`
+	Username            string  `json:"username"`
+	Lokasi              string  `json:"lokasi"`
+	Kelas               int     `json:"kelas"`
+	Tipe                string  `json:"tipe"`
+	Dokumen_kepemilikan string  `json:"dokumen_kepemilikan"`
+	Dokumen_perusahaan  string  `json:"dokumen_perusahaan"`
+	Modal               float64 `json:"modal"`
+	Deskripsi           string  `json:"deskripsi"`
+	CreatedAt           string  `json:"created_at"`
+	Field               []BusinessField
 	UserJoined          []User
 }
 
@@ -99,6 +107,8 @@ type SurveyRequest struct {
 	User_id                int    `json:"user_id"`
 	Id_asset               int    `json:"id_asset"`
 	Nama_asset             string `json:"nama_aset"`
+	Lokasi_asset           string `json:"lokasi_asset"`
+	Tipe_asset             string `json:"tipe_asset"`
 	Created_at             string `json:"created_at"`
 	Dateline               string `json:"dateline"`
 	Status_request         string `json:"status_request"`
@@ -112,6 +122,8 @@ type SurveyRequest struct {
 	Nilai_new              string `json:"nilai_new"`
 	Kondisi_old            string `json:"kondisi_old"`
 	Kondisi_new            string `json:"kondisi_new"`
+	Titik_koordinat_old    string `json:"titik_koordinat_old"`
+	Titik_koordinat_new    string `json:"titik_koordinat_new"`
 	Batas_koordinat_old    string `json:"batas_koordinat_old"`
 	Batas_koordinat_new    string `json:"batas_koordinat_new"`
 	Tags_old               string `json:"tags_old"`
@@ -121,11 +133,22 @@ type SurveyRequest struct {
 type TransactionRequest struct {
 	Id_transaksi_jual_sewa int    `json:"id_transaksi_jual_sewa"`
 	Perusahaan_id          int    `json:"perusahaan_id"`
+	Lokasi_perusahaan      string `json:"lokasi_perusahaan"`
 	User_id                int    `json:"user_id"`
+	Username               string `json:"username"`
+	Nama_lengkap           string `json:"nama_lengkap"`
 	Id_asset               int    `json:"id_asset"`
-	Tipe                   string `json:"tipe"`
-	Masa_sewa              string `json:"masa_sewa"`
-	Meeting_log            string `json:"meeting_log"`
+	Nama_aset              string `json:"nama_aset"`
+	Status                 string `json:"status"`
+	Nama_progress          string `json:"nama_progress"`
+	Proposal               string `json:"proposal"`
+	Tgl_meeting            string `json:"tgl_meeting"`
+	Waktu_meeting          string `json:"waktu_meeting"`
+	Lokasi_meeting         string `json:"lokasi_meeting"`
+	Deskripsi              string `json:"deskripsi"`
+	Alasan                 string `json:"alasan"`
+	Tgl_dateline           string `json:"tgl_dateline"`
+	Created_at             string `json:"created_at"`
 }
 
 type UserPrivilege struct {
@@ -164,7 +187,7 @@ type UserSurveyor struct {
 
 type UserPerusahaan struct {
 	Perusahaan_id    int    `json:"perusahaan_id"`
-	Name             string `json:"username"`
+	Name             string `json:"nama"`
 	UserCount        string `json:"usercount"`
 	TransactionCount string `json:"transactioncount"`
 }
@@ -189,4 +212,49 @@ type RegisSurveyor struct {
 	Denied_by_admin string      `json:"denied_by_admin"`
 	UserRole        []Role      `json:"user_role"`
 	UserPrivilege   []Privilege `json:"user_privilege"`
+}
+
+type Notification struct {
+	Notification_id        int    `json:"notification_id"`
+	User_id_sender         int    `json:"user_id_sender"`
+	User_id_receiver       int    `json:"user_id_receiver"`
+	Perusahaan_id_receiver int    `json:"perusahaan_id_receiver"`
+	Created_at             string `json:"created_at"`
+	Title                  string `json:"notification_title"`
+	Detail                 string `json:"notification_detail"`
+}
+
+type Kelas struct {
+	Id             int     `json:"id"`
+	Nama           string  `json:"nama"`
+	Modal_minimal  float64 `json:"modal_minimal"`
+	Modal_maksimal float64 `json:"modal_maksimal"`
+}
+
+type Progress struct {
+	Id                    int    `json:"id"`
+	User_id               int    `json:"user_id"`
+	Perusahaan_id         int    `json:"perusahaan_id"`
+	Id_asset              int    `json:"id_asset"`
+	Nama_asset            string `json:"nama_asset"`
+	Status                string `json:"status"`
+	Data_lengkap          string `json:"data_lengkap"`
+	Nama                  string `json:"nama"`
+	Proposal              string `json:"proposal"`
+	Tanggal_meeting       string `json:"tgl_meeting"`
+	Waktu_meeting         string `json:"waktu_meeting"`
+	Tempat_meeting        string `json:"tempat_meeting"`
+	Waktu_mulai_meeting   string `json:"waktu_mulai"`
+	Waktu_selesai_meeting string `json:"waktu_selesai"`
+	Notes                 string `json:"notes"`
+	Dokumen               string `json:"dokumen"`
+	Tipe_dokumen          string `json:"tipe"`
+}
+
+type GrupAsset struct {
+	Id_asset       int        `json:"id_asset"`
+	Asset_name     string     `json:"nama_asset"`
+	User_id        int        `json:"user_id"`
+	Perusahaan_id  int        `json:"perusahaan_id"`
+	Semua_progress []Progress `json:"progress"`
 }
