@@ -31,8 +31,16 @@ func TambahAsset(c echo.Context) error {
 	luas := c.FormValue("luas")
 	nilai := c.FormValue("nilai")
 	provinsi := c.FormValue("provinsi")
-	perusahaan_id := c.FormValue("perusahaan_id")
-	result, err := model.CreateAsset(fileLegalitas, suratKuasa, asetName, perusahaan_id, tipe, nomorLegalitas, status, alamat, kondisi, koordinat, batasKoordinat, luas, nilai, provinsi)
+	surat_legalitas := c.FormValue("surat_legalitas")
+	gambar_asset, err := c.FormFile("gambar_asset")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	usage := c.FormValue("usage")
+	tags := c.FormValue("tags")
+	result, err := model.CreateAsset(
+		fileLegalitas, suratKuasa, gambar_asset, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
+		kondisi, koordinat, batasKoordinat, luas, nilai, provinsi)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -62,8 +70,16 @@ func TambahAssetChild(c echo.Context) error {
 	batasKoordinat := c.FormValue("batas_koordinat")
 	luas := c.FormValue("luas")
 	nilai := c.FormValue("nilai")
-	perusahaan_id := c.FormValue("perusahaan_id")
-	result, err := model.CreateAssetChild(fileLegalitas, suratKuasa, parentId, asetName, perusahaan_id, tipe, nomorLegalitas, status, alamat, kondisi, koordinat, batasKoordinat, luas, nilai)
+	surat_legalitas := c.FormValue("surat_legalitas")
+	gambar_asset, err := c.FormFile("gambar_asset")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	usage := c.FormValue("usage")
+	tags := c.FormValue("tags")
+	result, err := model.CreateAssetChild(
+		fileLegalitas, suratKuasa, gambar_asset, parentId, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
+		kondisi, koordinat, batasKoordinat, luas, nilai)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -86,6 +102,28 @@ func GetAllAsset(c echo.Context) error {
 func GetAssetById(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.GetAssetById(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAssetSurveyHistoryByAssetId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAssetSurveyHistoryByAssetId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAssetChildByParentId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAssetChildByParentId(id)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -127,6 +165,17 @@ func GetAssetDetailedByPerusahaanId(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func GetAssetDetailedByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAssetDetailedByUserId(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func UbahVisibilitasAset(c echo.Context) error {
 	id := c.Param("id")
 	input, err := io.ReadAll(c.Request().Body)
@@ -151,6 +200,52 @@ func JoinAsset(c echo.Context) error {
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAssetRentedByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAssetRentedByUserId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UpdateAssetByIdWithoutGambar(c echo.Context) error {
+	asetId := c.FormValue("id")
+	asetName := c.FormValue("nama")
+	tipe := c.FormValue("tipe")
+	nomorLegalitas := c.FormValue("nomor_legalitas")
+	fileLegalitas, err := c.FormFile("file_legalitas")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	status := c.FormValue("status")
+	suratKuasa, err := c.FormFile("surat_kuasa")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	alamat := c.FormValue("alamat")
+	kondisi := c.FormValue("kondisi")
+	koordinat := c.FormValue("titik_koordinat")
+	batasKoordinat := c.FormValue("batas_koordinat")
+	luas := c.FormValue("luas")
+	nilai := c.FormValue("nilai")
+	surat_legalitas := c.FormValue("surat_legalitas")
+	usage := c.FormValue("usage")
+	tags := c.FormValue("tags")
+	result, err := model.UpdateAssetByIdWithoutGambar(
+		fileLegalitas, suratKuasa, asetId, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
+		kondisi, koordinat, batasKoordinat, luas, nilai)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+
 	ip := c.RealIP()
 	model.InsertLog(ip, "UploadFoto", result.Data, 3)
 	return c.JSON(http.StatusOK, result)
@@ -244,6 +339,17 @@ func UpdatePerusahaanById(c echo.Context) error {
 	result, err := model.UpdatePerusahaanById(string(akun))
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllPerusahaanJoinedByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAllPerusahaanJoinedByUserId(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 	}
 	ip := c.RealIP()
 	model.InsertLog(ip, "UploadFoto", result.Data, 3)
@@ -562,6 +668,17 @@ func GetAllUserTransaction(c echo.Context) error {
 func UserManagementGetMeetingByUserId(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.UserManagementGetMeetingByUserId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UserManagementGetMeetingByPerusahaanId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.UserManagementGetMeetingByPerusahaanId(id)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -1058,6 +1175,24 @@ func CreateMeeting(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func CreateMeetingWithoutDocument(c echo.Context) error {
+	id := c.FormValue("id")
+	tanggal_meeting := c.FormValue("tanggal_meeting")
+	waktu_meeting := c.FormValue("waktu_meeting")
+	tempat_meeting := c.FormValue("tempat_meeting")
+	waktu_mulai := c.FormValue("waktu_mulai")
+	waktu_selesai := c.FormValue("waktu_selesai")
+	notes := c.FormValue("notes")
+	result, err := model.CreateMeetingWithoutDocument(id, tanggal_meeting, waktu_meeting, tempat_meeting, waktu_mulai, waktu_selesai, notes)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func GetAllProgress(c echo.Context) error {
 	result, err := model.GetAllProgress()
 	if err != nil {
@@ -1105,6 +1240,36 @@ func GetProgressByUserAsetId(c echo.Context) error {
 	id := c.Param("id")
 	aset := c.Param("aset")
 	result, err := model.GetProgressByUserAsetId(id, aset)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllUsage(c echo.Context) error {
+	result, err := model.GetAllUsage()
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllTags(c echo.Context) error {
+	result, err := model.GetAllTags()
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllProvinsi(c echo.Context) error {
+	result, err := model.GetAllProvinsi()
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}

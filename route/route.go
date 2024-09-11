@@ -33,15 +33,22 @@ func Init() *echo.Echo {
 	e.GET("/user/foto/:id", controler.GetUserKTP)
 	e.GET("/user/unverified", controler.GetAllUserUnverified)
 	e.GET("/user/perusahaan/:id", controler.GetAllUserByPerusahaanId)
+	e.GET("/user/perusahaan/joined/:id", controler.GetAllPerusahaanJoinedByUserId)
 	e.GET("/user/admin/management", controler.AdminUserManagement)
 
 	e.GET("/asset", controler.GetAllAsset)
 	// e.GET("/asset/:nama", controler.GetAssetByName)
 	e.GET("/asset/:id", controler.GetAssetById)
+	e.GET("/asset/user/:id", controler.GetAssetRentedByUserId)
 	e.PUT("/asset/:id", controler.UbahVisibilitasAset)
+	e.PUT("/asset/nogambar", controler.UpdateAssetByIdWithoutGambar)
 	e.POST("/asset", controler.TambahAsset)
 	e.POST("/asset/child", controler.TambahAssetChild)
+	e.GET("/asset/child/:id", controler.GetAssetChildByParentId)
+	e.GET("/asset/history/:id", controler.GetAssetSurveyHistoryByAssetId)
+
 	e.GET("/asset/detail/:id", controler.GetAssetDetailedById)
+	e.GET("/asset/detail/user/:id", controler.GetAssetDetailedByUserId)
 	e.GET("/asset/detail/perusahaan/:id", controler.GetAssetDetailedByPerusahaanId)
 	e.POST("/asset/join", controler.JoinAsset)
 
@@ -88,6 +95,7 @@ func Init() *echo.Echo {
 	e.GET("/tranreq", controler.GetAllTranReq)
 	e.GET("/tranreq/user", controler.GetAllUserTransaction)
 	e.GET("/tranreq/meeting/:id", controler.UserManagementGetMeetingByUserId)
+	e.GET("/tranreq/meeting/perusahaan/:id", controler.UserManagementGetMeetingByUserId)
 	e.POST("/tranreq/accept", controler.AcceptTransaction)
 	e.POST("/tranreq/decline", controler.DeclineTransaction)
 	e.GET("/tranreq/:id", controler.GetTranReqById)
@@ -103,10 +111,15 @@ func Init() *echo.Echo {
 	e.GET("/business_field", controler.GetAllBusinessField)
 
 	e.POST("/progress", controler.CreateMeeting)
+	e.POST("/progress/nodocument", controler.CreateMeetingWithoutDocument)
 	e.GET("/progress/user/:id", controler.GetProgressByUserId)
 	e.GET("/progress/user/notdone/:id", controler.GetProgressNotDoneByUserId)
 	e.GET("/progress/:id", controler.GetProgressById)
 	e.GET("/progress/user/notdone/:id/:aset", controler.GetProgressByUserAsetId)
 
+	// usage tags provinsi
+	e.GET("/usage", controler.GetAllUsage)
+	e.GET("/tags", controler.GetAllTags)
+	e.GET("/provinsi", controler.GetAllProvinsi)
 	return e
 }

@@ -39,14 +39,14 @@ type Asset struct {
 	File_legalitas    string   `json:"file_legalitas"`
 	Status_asset      string   `json:"status_asset"`
 	Surat_kuasa       string   `json:"surat_kuasa"`
+	Surat_legalitas   string   `json:"surat_legalitas"`
 	Alamat            string   `json:"alamat"`
 	Kondisi           string   `json:"kondisi"`
 	Titik_koordinat   string   `json:"titik_koordinat"`
 	Batas_koordinat   string   `json:"batas_koordinat"`
 	Luas              float32  `json:"luas"`
 	Nilai             float32  `json:"nilai"`
-	Provinsi          string   `json:"provinsi"`
-	Usage             string   `json:"usage"`
+	Provinsi          int      `json:"provinsi"`
 	Owned_by          int      `json:"owned_by"`
 	Id_asset_child    string   `json:"id_asset_child"`
 	Status_pengecekan string   `json:"status_pengecekan"`
@@ -58,6 +58,7 @@ type Asset struct {
 	Deleted_at        string   `json:"deleted_at"`
 	LinkGambar        []string `json:"link_gambar"`
 	TagsAssets        []string `json:"tags"`
+	Usage             []string `json:"usage"`
 	ChildAssets       []Asset
 }
 
@@ -229,6 +230,22 @@ type Kelas struct {
 	Nama           string  `json:"nama"`
 	Modal_minimal  float64 `json:"modal_minimal"`
 	Modal_maksimal float64 `json:"modal_maksimal"`
+}
+
+type Kegunaan struct {
+	Id   int    `json:"id"`
+	Nama string `json:"nama"`
+}
+
+type Tags struct {
+	Id     int    `json:"id"`
+	Nama   string `json:"nama"`
+	Detail string `json:"detail"`
+}
+
+type Provinsi struct {
+	Id   int    `json:"id"`
+	Nama string `json:"nama"`
 }
 
 type Progress struct {

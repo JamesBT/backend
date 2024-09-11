@@ -422,7 +422,6 @@ func GetAllUser() (Response, error) {
 		}
 
 		if existingUser, ok := userMap[dtUser.Id]; ok {
-			// Check if the role already exists in the user's role list
 			roleExists := false
 			for _, r := range existingUser.UserRole {
 				if r.Role_id == roleId {
@@ -434,7 +433,6 @@ func GetAllUser() (Response, error) {
 				existingUser.UserRole = append(existingUser.UserRole, Role{Role_id: roleId, Nama_role: roleName})
 			}
 
-			// Check if the privilege already exists in the user's privilege list
 			privilegeExists := false
 			for _, p := range existingUser.UserPrivilege {
 				if p.Privilege_id == privilegeId {
@@ -446,7 +444,6 @@ func GetAllUser() (Response, error) {
 				existingUser.UserPrivilege = append(existingUser.UserPrivilege, Privilege{Privilege_id: privilegeId, Nama_privilege: privilegeName})
 			}
 		} else {
-			// If the user is not already in the map, add them with their initial role and privilege
 			dtUser.UserRole = []Role{{Role_id: roleId, Nama_role: roleName}}
 			dtUser.UserPrivilege = []Privilege{{Privilege_id: privilegeId, Nama_privilege: privilegeName}}
 			userMap[dtUser.Id] = &dtUser
@@ -1227,6 +1224,69 @@ func AdminUserManagement() (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
 	res.Data = arrUser
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllPerusahaanJoinedByUserId(user_id string) (Response, error) {
+	var res Response
+	var arrPerusahaan = []Perusahaan{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT p.perusahaan_id, p.name
+	FROM user_perusahaan up 
+	LEFT JOIN perusahaan p ON up.id_perusahaan = p.perusahaan_id
+	WHERE up.id_user = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query(user_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+
+	for result.Next() {
+		var dtPerusahaan Perusahaan
+		err = result.Scan(&dtPerusahaan.Id, &dtPerusahaan.Nama)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+		arrPerusahaan = append(arrPerusahaan, dtPerusahaan)
+	}
+
+	if len(arrPerusahaan) == 0 {
+		res.Status = 401
+		res.Message = "Data tidak ditemukan"
+		res.Data = "User tidak tergabung dalam perusahaan mana pun"
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrPerusahaan
 
 	defer db.DbClose(con)
 	return res, nil
@@ -2988,23 +3048,48 @@ func CreateNotification(input string) (Response, error) {
 	}
 
 	DeleteNotification()
+	var query string
+	var result sql.Result
+	if kirimnotif.User_id_receiver != 0 {
+		query = "INSERT INTO notification (user_id_sender, user_id_receiver, created_at, notification_title, notification_detail) VALUES (?,?,NOW(),?,?)"
+		stmt, err := con.Prepare(query)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmt.Close()
 
-	query := "INSERT INTO notification (user_id_sender, user_id_receiver, perusahaan_id_receiver, created_at, notification_title, notification_detail) VALUES (?,?,?,NOW(),?,?)"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
+		result, err = stmt.Exec(kirimnotif.User_id_sender, kirimnotif.User_id_receiver, kirimnotif.Title, kirimnotif.Detail)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+	} else if kirimnotif.Perusahaan_id_receiver != 0 {
+		query = "INSERT INTO notification (user_id_sender, perusahaan_id_receiver, created_at, notification_title, notification_detail) VALUES (?,?,NOW(),?,?)"
+		stmt, err := con.Prepare(query)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmt.Close()
 
-	result, err := stmt.Exec(kirimnotif.User_id_sender, kirimnotif.User_id_receiver, kirimnotif.Perusahaan_id_receiver, kirimnotif.Title, kirimnotif.Detail)
-	if err != nil {
+		result, err = stmt.Exec(kirimnotif.User_id_sender, kirimnotif.Perusahaan_id_receiver, kirimnotif.Title, kirimnotif.Detail)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+	} else {
 		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
+		res.Message = "kedua parameter kosong"
+		return res, errors.New(res.Message)
 	}
 
 	notifId, err := result.LastInsertId()
@@ -3041,7 +3126,7 @@ func GetNotificationById(id string) (Response, error) {
 	DeleteNotification()
 
 	query := `
-	SELECT *
+	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail
 	FROM notification
 	WHERE notification_id = ?
 	`
@@ -3055,7 +3140,7 @@ func GetNotificationById(id string) (Response, error) {
 	defer stmt.Close()
 	nId, _ := strconv.Atoi(id)
 	err = stmt.QueryRow(nId).Scan(
-		&dtNotif.Notification_id, &dtNotif.User_id_sender, &dtNotif.User_id_receiver,
+		&dtNotif.Notification_id, &dtNotif.User_id_sender, &dtNotif.User_id_receiver, &dtNotif.Perusahaan_id_receiver,
 		&dtNotif.Created_at, &dtNotif.Title, &dtNotif.Detail,
 	)
 	if err != nil {
@@ -3088,7 +3173,7 @@ func GetNotificationByUserIdReceiver(user_id string) (Response, error) {
 	DeleteNotification()
 
 	query := `
-	SELECT * 
+	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail 
 	FROM notification
 	WHERE user_id_receiver = ?
 	`
@@ -3151,7 +3236,7 @@ func GetNotificationByPerusahaanIdReceiver(perusahaan_id string) (Response, erro
 	DeleteNotification()
 
 	query := `
-	SELECT * 
+	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail 
 	FROM notification
 	WHERE perusahaan_id_receiver = ?
 	`
@@ -3189,6 +3274,12 @@ func GetNotificationByPerusahaanIdReceiver(perusahaan_id string) (Response, erro
 		}
 
 		arrNotification = append(arrNotification, dtNotif)
+	}
+
+	if len(arrNotification) == 0 {
+		res.Status = 401
+		res.Message = "data kosong"
+		return res, errors.New(res.Message)
 	}
 
 	res.Status = http.StatusOK
@@ -3230,5 +3321,209 @@ func DeleteNotification() (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil menghapus notifikasi lama"
 
+	return res, nil
+}
+
+func GetAllUsage() (Response, error) {
+	var res Response
+	var arrUsage = []Kegunaan{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT *
+	FROM penggunaan
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dtUsage Kegunaan
+		err := rows.Scan(&dtUsage.Id, &dtUsage.Nama)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		arrUsage = append(arrUsage, dtUsage)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(arrUsage) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrUsage
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllTags() (Response, error) {
+	var res Response
+	var arrTags = []Tags{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT *
+	FROM tags
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dtTags Tags
+		err := rows.Scan(&dtTags.Id, &dtTags.Nama, &dtTags.Detail)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		arrTags = append(arrTags, dtTags)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(arrTags) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrTags
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllProvinsi() (Response, error) {
+	var res Response
+	var arrProvinsi = []Provinsi{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT *
+	FROM provinsi
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dtProvinsi Provinsi
+		err := rows.Scan(&dtProvinsi.Id, &dtProvinsi.Nama)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		arrProvinsi = append(arrProvinsi, dtProvinsi)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(arrProvinsi) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrProvinsi
+
+	defer db.DbClose(con)
 	return res, nil
 }

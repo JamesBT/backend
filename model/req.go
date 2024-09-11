@@ -870,7 +870,7 @@ func CreateTranReq(proposal *multipart.FileHeader, id_asset, user_id, perusahaan
 		return res, err
 	}
 
-	query := "INSERT INTO transaction_request (id_asset, user_id, perusahaan_id, nama_progress, tgl_meeting, waktu_meeting, lokasi_meeting, deskripsi) VALUES (?,?,?,?,?,?,?)"
+	query := "INSERT INTO transaction_request (id_asset, user_id, perusahaan_id, nama_progress, tgl_meeting, waktu_meeting, lokasi_meeting, deskripsi) VALUES (?,?,?,?,?,?,?,?)"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -1492,6 +1492,112 @@ func CreateMeeting(dokumen *multipart.FileHeader, id, tanggal_meeting, waktu_mee
 	var res Response
 	var dtMeeting Progress
 
+	if id == "" && tanggal_meeting == "" && waktu_meeting == "" && tempat_meeting == "" && waktu_mulai_meeting == "" && waktu_selesai_meeting == "" && notes == "" {
+		res.Status = 400
+		res.Message = "Required fields are missing"
+		res.Data = "data tidak lengkap"
+		return res, errors.New("required fields are missing")
+	}
+	if tipe_dokumen != "L" && tipe_dokumen != "C" && tipe_dokumen != "A" {
+		tipe_dokumen = ""
+		dtMeeting.Tipe_dokumen = ""
+	}
+
+	dtMeeting.Id, _ = strconv.Atoi(id)
+	dtMeeting.Tanggal_meeting = tanggal_meeting
+	dtMeeting.Waktu_meeting = waktu_meeting
+	dtMeeting.Tempat_meeting = tempat_meeting
+	dtMeeting.Waktu_mulai_meeting = waktu_mulai_meeting
+	dtMeeting.Waktu_selesai_meeting = waktu_selesai_meeting
+	dtMeeting.Notes = notes
+	dtMeeting.Tipe_dokumen = tipe_dokumen
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+		UPDATE progress SET tanggal_meeting = ?, waktu_meeting = ?, tempat_meeting = ?, 
+		waktu_mulai_meeting=?, waktu_selesai_meeting = ?, notes = ?, tipe_file = ?, data_lengkap = 'Y'
+		WHERE id = ?`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(
+		dtMeeting.Tanggal_meeting,
+		dtMeeting.Waktu_meeting,
+		dtMeeting.Tempat_meeting,
+		dtMeeting.Waktu_mulai_meeting,
+		dtMeeting.Waktu_selesai_meeting,
+		dtMeeting.Notes,
+		dtMeeting.Tipe_dokumen,
+		dtMeeting.Id,
+	)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// tambah file
+	//  ======================================================
+
+	dokumen.Filename = id + "_" + dokumen.Filename
+	pathFotoFile := "uploads/progress/" + dokumen.Filename
+	//source
+	srcfoto, err := dokumen.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcfoto.Close()
+
+	// Destination
+	dstfoto, err := os.Create("uploads/progress/" + dokumen.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstfoto, srcfoto); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstfoto.Close()
+
+	err = UpdateDataFotoPath("progress", "file", pathFotoFile, "id", dtMeeting.Id)
+	if err != nil {
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil memasukkan data"
+	res.Data = dtMeeting
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func CreateMeetingWithoutDocument(id, tanggal_meeting, waktu_meeting, tempat_meeting, waktu_mulai_meeting, waktu_selesai_meeting, notes string) (Response, error) {
+	var res Response
+	var dtMeeting Progress
+
 	dtMeeting.Id, _ = strconv.Atoi(id)
 	dtMeeting.Tanggal_meeting = tanggal_meeting
 	dtMeeting.Waktu_meeting = waktu_meeting
@@ -1506,10 +1612,6 @@ func CreateMeeting(dokumen *multipart.FileHeader, id, tanggal_meeting, waktu_mee
 		res.Data = "data tidak lengkap"
 		return res, errors.New("required fields are missing")
 	}
-	if tipe_dokumen != "L" && tipe_dokumen != "C" && tipe_dokumen != "A" {
-		tipe_dokumen = ""
-		dtMeeting.Tipe_dokumen = ""
-	}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -1519,100 +1621,33 @@ func CreateMeeting(dokumen *multipart.FileHeader, id, tanggal_meeting, waktu_mee
 		return res, err
 	}
 
-	if dtMeeting.Tipe_dokumen != "" {
-		query := `
-		UPDATE progress SET tanggal_meeting = ?, waktu_meeting = ?, tempat_meeting = ?, 
-		waktu_mulai_meeting=?, waktu_selesai_meeting = ?, notes = ?, tipe_file = ?, data_lengkap = 'Y'
-		WHERE id = ?`
-		stmt, err := con.Prepare(query)
-		if err != nil {
-			res.Status = 401
-			res.Message = "stmt gagal"
-			res.Data = err.Error()
-			return res, err
-		}
-		defer stmt.Close()
-
-		_, err = stmt.Exec(
-			dtMeeting.Tanggal_meeting,
-			dtMeeting.Waktu_meeting,
-			dtMeeting.Tempat_meeting,
-			dtMeeting.Waktu_mulai_meeting,
-			dtMeeting.Waktu_selesai_meeting,
-			dtMeeting.Notes,
-			dtMeeting.Tipe_dokumen,
-			dtMeeting.Id,
-		)
-		if err != nil {
-			res.Status = 401
-			res.Message = "exec gagal"
-			res.Data = err.Error()
-			return res, err
-		}
-
-		// tambah file
-		//  ======================================================
-
-		dokumen.Filename = id + "_" + dokumen.Filename
-		pathFotoFile := "uploads/progress/" + dokumen.Filename
-		//source
-		srcfoto, err := dokumen.Open()
-		if err != nil {
-			log.Println(err.Error())
-			return res, err
-		}
-		defer srcfoto.Close()
-
-		// Destination
-		dstfoto, err := os.Create("uploads/progress/" + dokumen.Filename)
-		if err != nil {
-			log.Println("2")
-			fmt.Print("2")
-			return res, err
-		}
-
-		// Copy
-		if _, err = io.Copy(dstfoto, srcfoto); err != nil {
-			log.Println(err.Error())
-			log.Println("3")
-			fmt.Print("3")
-			return res, err
-		}
-		dstfoto.Close()
-
-		err = UpdateDataFotoPath("progress", "file", pathFotoFile, "id", dtMeeting.Id)
-		if err != nil {
-			return res, err
-		}
-	} else {
-		query := `
+	query := `
 		UPDATE progress SET tanggal_meeting = ?, waktu_meeting = ?, tempat_meeting = ?, 
 		waktu_mulai_meeting=?, waktu_selesai_meeting = ?, notes = ?, data_lengkap = 'Y'
 		WHERE id = ?`
-		stmt, err := con.Prepare(query)
-		if err != nil {
-			res.Status = 401
-			res.Message = "stmt gagal"
-			res.Data = err.Error()
-			return res, err
-		}
-		defer stmt.Close()
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
 
-		_, err = stmt.Exec(
-			dtMeeting.Tanggal_meeting,
-			dtMeeting.Waktu_meeting,
-			dtMeeting.Tempat_meeting,
-			dtMeeting.Waktu_mulai_meeting,
-			dtMeeting.Waktu_selesai_meeting,
-			dtMeeting.Notes,
-			dtMeeting.Id,
-		)
-		if err != nil {
-			res.Status = 401
-			res.Message = "exec gagal"
-			res.Data = err.Error()
-			return res, err
-		}
+	_, err = stmt.Exec(
+		dtMeeting.Tanggal_meeting,
+		dtMeeting.Waktu_meeting,
+		dtMeeting.Tempat_meeting,
+		dtMeeting.Waktu_mulai_meeting,
+		dtMeeting.Waktu_selesai_meeting,
+		dtMeeting.Notes,
+		dtMeeting.Id,
+	)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
 	}
 
 	res.Status = http.StatusOK
@@ -1870,7 +1905,7 @@ func GetProgressByUserAsetId(user_id, aset_id string) (Response, error) {
 	SELECT id, user_id, perusahaan_id, id_asset, nama, proposal, status, data_lengkap, IFNULL(tanggal_meeting,""), IFNULL(waktu_meeting,""), 
 	IFNULL(tempat_meeting,""), IFNULL(waktu_mulai_meeting,""), IFNULL(waktu_selesai_meeting,""), IFNULL(notes,""), IFNULL(file,""), IFNULL(tipe_file,"")
 	FROM progress
-	WHERE user_id = ? AND id_asset = ? AND status = 'A'
+	WHERE user_id = ? AND id_asset = ? AND status = 'A' AND data_lengkap = 'N'
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
