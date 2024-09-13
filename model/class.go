@@ -29,36 +29,36 @@ type User struct {
 }
 
 type Asset struct {
-	Id_asset          int      `json:"id_asset"`
-	Nama              string   `json:"nama"`
-	Id_asset_parent   int      `json:"id_asset_parent"`
-	Id_perusahaan     int      `json:"id_perusahaan"`
-	Id_join           string   `json:"id_join"`
-	Tipe              string   `json:"tipe"`
-	Nomor_legalitas   string   `json:"nomor_legalitas"`
-	File_legalitas    string   `json:"file_legalitas"`
-	Status_asset      string   `json:"status_asset"`
-	Surat_kuasa       string   `json:"surat_kuasa"`
-	Surat_legalitas   string   `json:"surat_legalitas"`
-	Alamat            string   `json:"alamat"`
-	Kondisi           string   `json:"kondisi"`
-	Titik_koordinat   string   `json:"titik_koordinat"`
-	Batas_koordinat   string   `json:"batas_koordinat"`
-	Luas              float32  `json:"luas"`
-	Nilai             float32  `json:"nilai"`
-	Provinsi          int      `json:"provinsi"`
-	Owned_by          int      `json:"owned_by"`
-	Id_asset_child    string   `json:"id_asset_child"`
-	Status_pengecekan string   `json:"status_pengecekan"`
-	Status_verifikasi string   `json:"status_verifikasi"`
-	Status_publik     string   `json:"status_publik"`
-	Hak_akses         string   `json:"hak_akses"`
-	Masa_sewa         string   `json:"masa_sewa"`
-	Created_at        string   `json:"created_at"`
-	Deleted_at        string   `json:"deleted_at"`
-	LinkGambar        []string `json:"link_gambar"`
-	TagsAssets        []string `json:"tags"`
-	Usage             []string `json:"usage"`
+	Id_asset          int        `json:"id_asset"`
+	Nama              string     `json:"nama"`
+	Id_asset_parent   int        `json:"id_asset_parent"`
+	Id_perusahaan     int        `json:"id_perusahaan"`
+	Id_join           string     `json:"id_join"`
+	Tipe              string     `json:"tipe"`
+	Nomor_legalitas   string     `json:"nomor_legalitas"`
+	File_legalitas    string     `json:"file_legalitas"`
+	Status_asset      string     `json:"status_asset"`
+	Surat_kuasa       string     `json:"surat_kuasa"`
+	Surat_legalitas   string     `json:"surat_legalitas"`
+	Alamat            string     `json:"alamat"`
+	Kondisi           string     `json:"kondisi"`
+	Titik_koordinat   string     `json:"titik_koordinat"`
+	Batas_koordinat   string     `json:"batas_koordinat"`
+	Luas              float64    `json:"luas"`
+	Nilai             float64    `json:"nilai"`
+	Provinsi          int        `json:"provinsi"`
+	Owned_by          int        `json:"owned_by"`
+	Id_asset_child    string     `json:"id_asset_child"`
+	Status_pengecekan string     `json:"status_pengecekan"`
+	Status_verifikasi string     `json:"status_verifikasi"`
+	Status_publik     string     `json:"status_publik"`
+	Hak_akses         string     `json:"hak_akses"`
+	Masa_sewa         string     `json:"masa_sewa"`
+	Created_at        string     `json:"created_at"`
+	Deleted_at        string     `json:"deleted_at"`
+	LinkGambar        []string   `json:"link_gambar"`
+	TagsAssets        []Tags     `json:"tags"`
+	Usage             []Kegunaan `json:"usage"`
 	ChildAssets       []Asset
 }
 

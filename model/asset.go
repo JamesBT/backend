@@ -301,7 +301,7 @@ func CreateAssetChild(
 	// ambil parent aset + dt provinsi
 	var dtProvinsi string
 	var dtAsetChild string
-	ParentQuery := "SELECT provinsi,id_asset_child FROM asset WHERE id_asset = ?"
+	ParentQuery := "SELECT provinsi,IFNULL(id_asset_child,'') FROM asset WHERE id_asset = ?"
 	err = con.QueryRow(ParentQuery, parent_id).Scan(&dtProvinsi, &dtAsetChild)
 	if err != nil || (dtProvinsi == "") {
 		res.Status = 401
@@ -540,7 +540,7 @@ func GetAllAsset() (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT * FROM asset"
+	query := "SELECT * FROM asset WHERE deleted_at IS NULL"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -736,7 +736,7 @@ func GetAssetById(aset_id string) (Response, error) {
 	}
 	dtAset.LinkGambar = gambarLinks
 
-	usageQuery := "SELECT p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
+	usageQuery := "SELECT p.id,p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
 	rowsusage, err := con.Query(usageQuery, nId)
 	if err != nil {
 		res.Status = 401
@@ -746,10 +746,10 @@ func GetAssetById(aset_id string) (Response, error) {
 	}
 	defer rowsusage.Close()
 
-	var usage []string
+	var usage []Kegunaan
 	for rowsusage.Next() {
-		var link string
-		err := rowsusage.Scan(&link)
+		var link Kegunaan
+		err := rowsusage.Scan(&link.Id, &link.Nama)
 		if err != nil {
 			res.Status = 401
 			res.Message = "gagal membaca gambar"
@@ -758,9 +758,9 @@ func GetAssetById(aset_id string) (Response, error) {
 		}
 		usage = append(usage, link)
 	}
-	dtAset.LinkGambar = usage
+	dtAset.Usage = usage
 
-	tagsQuery := "SELECT t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
+	tagsQuery := "SELECT t.id,t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
 	tagsRows, err := con.Query(tagsQuery, nId)
 	if err != nil {
 		res.Status = 401
@@ -770,10 +770,10 @@ func GetAssetById(aset_id string) (Response, error) {
 	}
 	defer tagsRows.Close()
 
-	var tags []string
+	var tags []Tags
 	for tagsRows.Next() {
-		var tag string
-		err := tagsRows.Scan(&tag)
+		var tag Tags
+		err := tagsRows.Scan(&tag.Id, &tag.Nama)
 		if err != nil {
 			res.Status = 401
 			res.Message = "gagal membaca tags"
@@ -943,7 +943,7 @@ func GetAssetDetailedById(aset_id string) (Response, error) {
 func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	var dtAset Asset
 
-	query := "SELECT * FROM asset WHERE id_asset = ?"
+	query := "SELECT * FROM asset WHERE id_asset = ? AND deleted_at IS NULL"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		return dtAset, err
@@ -955,7 +955,8 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	var deleteAt []byte
 	var idJoin, idAssetChild sql.NullString
 	var idAssetParent, idPerusahaan, idProvinsi sql.NullInt32
-	err = stmt.QueryRow(nId).Scan(&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &idPerusahaan, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
+	err = stmt.QueryRow(nId).Scan(
+		&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &idPerusahaan, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
 	if err != nil {
 		return dtAset, err
 	}
@@ -1007,6 +1008,7 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 		dtAset.Provinsi = 0
 	}
 
+	fmt.Println("ambil gambar")
 	gambarQuery := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
 	rows, err := con.Query(gambarQuery, nId)
 	if err != nil {
@@ -1025,17 +1027,18 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	}
 	dtAset.LinkGambar = gambarLinks
 
-	usageQuery := "SELECT p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
+	fmt.Println("ambil usage")
+	usageQuery := "SELECT p.id,p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
 	rowsusage, err := con.Query(usageQuery, nId)
 	if err != nil {
 		return dtAset, err
 	}
 	defer rowsusage.Close()
 
-	var usage []string
+	var usage []Kegunaan
 	for rowsusage.Next() {
-		var link string
-		err := rowsusage.Scan(&link)
+		var link Kegunaan
+		err := rowsusage.Scan(&link.Id, &link.Nama)
 		if err != nil {
 			return dtAset, err
 		}
@@ -1043,17 +1046,18 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	}
 	dtAset.Usage = usage
 
-	tagsQuery := "SELECT t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
+	fmt.Println("ambil tag")
+	tagsQuery := "SELECT t.id,t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
 	tagsRows, err := con.Query(tagsQuery, nId)
 	if err != nil {
 		return dtAset, err
 	}
 	defer tagsRows.Close()
 
-	var tags []string
+	var tags []Tags
 	for tagsRows.Next() {
-		var tag string
-		err := tagsRows.Scan(&tag)
+		var tag Tags
+		err := tagsRows.Scan(&tag.Id, &tag.Nama)
 		if err != nil {
 			return dtAset, err
 		}
@@ -1061,23 +1065,39 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	}
 	dtAset.TagsAssets = tags
 
-	childQuery := "SELECT id_asset FROM asset WHERE id_asset_parent = ?"
-	rows, err = con.Query(childQuery, dtAset.Id_asset)
-	if err != nil {
-		return dtAset, err
-	}
-	defer rows.Close()
+	fmt.Println("ambil child")
+	fmt.Println("id ", dtAset.Id_asset)
+	childIds := strings.Split(dtAset.Id_asset_child, ",")
+	fmt.Println("ambil child id", childIds)
+	for _, childId := range childIds {
+		trimmedChildId := strings.TrimSpace(childId)
 
-	for rows.Next() {
-		var childId int
-		if err := rows.Scan(&childId); err != nil {
+		// Query to check if the child asset's `deleted_at` is NULL
+		var deletedAt sql.NullString
+		checkQuery := "SELECT deleted_at FROM asset WHERE id_asset = ?"
+		err := con.QueryRow(checkQuery, trimmedChildId).Scan(&deletedAt)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// If the asset does not exist, continue to the next child
+				fmt.Printf("Child asset %s not found, skipping.\n", trimmedChildId)
+				continue
+			}
+			// If another error occurs, return the error
 			return dtAset, err
 		}
 
-		childAset, err := fetchAssetDetailed(con, strconv.Itoa(childId))
+		// Skip this child if deleted_at is not NULL
+		if deletedAt.Valid {
+			fmt.Printf("Skipping child asset %s because it has been deleted.\n", trimmedChildId)
+			continue
+		}
+
+		// Fetch detailed data for the child asset if it's not deleted
+		childAset, err := fetchAssetDetailed(con, trimmedChildId)
 		if err != nil {
 			return dtAset, err
 		}
+
 		dtAset.ChildAssets = append(dtAset.ChildAssets, childAset)
 	}
 
@@ -1238,17 +1258,17 @@ func fetchAssetsByPerusahaanId(con *sql.DB, perusahaan_id string) ([]Asset, erro
 		dtAset.LinkGambar = gambarLinks
 
 		// Fetch usage
-		usageQuery := "SELECT p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
+		usageQuery := "SELECT p.id,p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
 		usageRows, err := con.Query(usageQuery, dtAset.Id_asset)
 		if err != nil {
 			return nil, err
 		}
 		defer usageRows.Close()
 
-		var usage []string
+		var usage []Kegunaan
 		for usageRows.Next() {
-			var name string
-			err := usageRows.Scan(&name)
+			var name Kegunaan
+			err := usageRows.Scan(&name.Id, &name.Nama)
 			if err != nil {
 				return nil, err
 			}
@@ -1257,17 +1277,17 @@ func fetchAssetsByPerusahaanId(con *sql.DB, perusahaan_id string) ([]Asset, erro
 		dtAset.Usage = usage
 
 		// Fetch tags
-		tagsQuery := "SELECT t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
+		tagsQuery := "SELECT t.id,t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
 		tagsRows, err := con.Query(tagsQuery, dtAset.Id_asset)
 		if err != nil {
 			return nil, err
 		}
 		defer tagsRows.Close()
 
-		var tags []string
+		var tags []Tags
 		for tagsRows.Next() {
-			var tag string
-			err := tagsRows.Scan(&tag)
+			var tag Tags
+			err := tagsRows.Scan(&tag.Id, &tag.Nama)
 			if err != nil {
 				return nil, err
 			}
@@ -1456,7 +1476,7 @@ func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
 			}
 
 			// Fetch usages
-			usageQuery := `SELECT p.nama FROM asset_penggunaan ap
+			usageQuery := `SELECT p.id,p.nama FROM asset_penggunaan ap
 				JOIN penggunaan p ON ap.id_penggunaan = p.id
 				WHERE ap.id_asset = ?`
 			usageRows, err := con.Query(usageQuery, dtAset.Id_asset)
@@ -1466,8 +1486,8 @@ func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
 			defer usageRows.Close()
 
 			for usageRows.Next() {
-				var usageName string
-				err := usageRows.Scan(&usageName)
+				var usageName Kegunaan
+				err := usageRows.Scan(&usageName.Id, &usageName.Nama)
 				if err != nil {
 					return nil, err
 				}
@@ -1485,8 +1505,8 @@ func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
 			defer tagRows.Close()
 
 			for tagRows.Next() {
-				var tagName string
-				err := tagRows.Scan(&tagName)
+				var tagName Tags
+				err := tagRows.Scan(&tagName.Id, &tagName.Nama)
 				if err != nil {
 					return nil, err
 				}
@@ -1667,12 +1687,12 @@ func JoinAsset(input string) (Response, error) {
 
 	var masaSewa sql.NullTime
 	var deleteAt sql.NullTime
-	var idAssetParent, idAssetChild, idJoin sql.NullInt32
+	var idAssetParent, idAssetChild, idJoin, idPerusahaan sql.NullInt32
 	err = stmtAsset1.QueryRow(tempjoinAsset.IdAsset1).Scan(&dtAsset1.Id_asset, &idAssetParent, &idAssetChild, &idJoin,
-		&dtAsset1.Id_perusahaan, &dtAsset1.Nama, &dtAsset1.Tipe, &dtAsset1.Nomor_legalitas,
-		&dtAsset1.File_legalitas, &dtAsset1.Status_asset, &dtAsset1.Surat_kuasa, &dtAsset1.Alamat,
+		&idPerusahaan, &dtAsset1.Nama, &dtAsset1.Tipe, &dtAsset1.Nomor_legalitas,
+		&dtAsset1.File_legalitas, &dtAsset1.Status_asset, &dtAsset1.Surat_kuasa, &dtAsset1.Surat_legalitas, &dtAsset1.Alamat,
 		&dtAsset1.Kondisi, &dtAsset1.Titik_koordinat, &dtAsset1.Batas_koordinat, &dtAsset1.Luas,
-		&dtAsset1.Nilai, &dtAsset1.Provinsi, &dtAsset1.Usage, &dtAsset1.Status_pengecekan,
+		&dtAsset1.Nilai, &dtAsset1.Provinsi, &dtAsset1.Status_pengecekan,
 		&dtAsset1.Status_verifikasi, &dtAsset1.Status_publik, &dtAsset1.Hak_akses, &masaSewa,
 		&dtAsset1.Created_at, &deleteAt)
 	if err != nil {
@@ -1706,6 +1726,11 @@ func JoinAsset(input string) (Response, error) {
 	} else {
 		dtAsset1.Id_join = "0"
 	}
+	if idPerusahaan.Valid {
+		dtAsset1.Id_perusahaan = int(idPerusahaan.Int32)
+	} else {
+		dtAsset1.Id_perusahaan = 0
+	}
 
 	queryAsset2 := "SELECT * FROM asset WHERE id_asset = ?"
 	stmtAsset2, err := con.Prepare(queryAsset2)
@@ -1719,12 +1744,12 @@ func JoinAsset(input string) (Response, error) {
 
 	var masaSewa2 sql.NullTime
 	var deleteAt2 sql.NullTime
-	var idAssetParent2, idAssetChild2, idJoin2 sql.NullInt32
+	var idAssetParent2, idAssetChild2, idJoin2, idPerusahaan2 sql.NullInt32
 	err = stmtAsset1.QueryRow(tempjoinAsset.IdAsset2).Scan(&dtAsset2.Id_asset, &idAssetParent2, &idAssetChild2, &idJoin2,
-		&dtAsset2.Id_perusahaan, &dtAsset2.Nama, &dtAsset2.Tipe, &dtAsset2.Nomor_legalitas,
-		&dtAsset2.File_legalitas, &dtAsset2.Status_asset, &dtAsset2.Surat_kuasa, &dtAsset2.Alamat,
+		&idPerusahaan2, &dtAsset2.Nama, &dtAsset2.Tipe, &dtAsset2.Nomor_legalitas,
+		&dtAsset2.File_legalitas, &dtAsset2.Status_asset, &dtAsset2.Surat_kuasa, &dtAsset2.Surat_legalitas, &dtAsset2.Alamat,
 		&dtAsset2.Kondisi, &dtAsset2.Titik_koordinat, &dtAsset2.Batas_koordinat, &dtAsset2.Luas,
-		&dtAsset2.Nilai, &dtAsset2.Provinsi, &dtAsset2.Usage, &dtAsset2.Status_pengecekan,
+		&dtAsset2.Nilai, &dtAsset2.Provinsi, &dtAsset2.Status_pengecekan,
 		&dtAsset2.Status_verifikasi, &dtAsset2.Status_publik, &dtAsset2.Hak_akses, &masaSewa2,
 		&dtAsset2.Created_at, &deleteAt2)
 	if err != nil {
@@ -1758,6 +1783,13 @@ func JoinAsset(input string) (Response, error) {
 	} else {
 		dtAsset2.Id_join = "0"
 	}
+	if idPerusahaan2.Valid {
+		dtAsset2.Id_perusahaan = int(idPerusahaan2.Int32)
+	} else {
+		dtAsset2.Id_perusahaan = 0
+	}
+
+	fmt.Println("gabung aset")
 
 	luasBaru := dtAsset1.Luas + dtAsset2.Luas
 	nilaiBaru := dtAsset1.Nilai + dtAsset2.Nilai
@@ -1773,33 +1805,105 @@ func JoinAsset(input string) (Response, error) {
 		res.Message = "provinsi tidak sama"
 		return res, errors.New(res.Message)
 	}
+	if dtAsset1.Id_asset_parent != dtAsset2.Id_asset_parent {
 
+		res.Status = 401
+		res.Message = "parent tidak sama"
+		return res, errors.New(res.Message)
+	}
 	tempIdJoin := strconv.Itoa(tempjoinAsset.IdAsset1) + "," + strconv.Itoa(tempjoinAsset.IdAsset2)
 
-	query := `
-	INSERT INTO asset (id_join, perusahaan_id, luas, nilai, provinsi, created_at) 
-	VALUES (?,?,?,?,?,NOW())
-	`
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
+	var query string
+	var result sql.Result
 
-	result, err := stmt.Exec(tempIdJoin, tempIdPerusahaan1, luasBaru, nilaiBaru, dtAsset1.Provinsi)
-	if err != nil {
-		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
+	if tempIdPerusahaan1 == 0 {
+		query = `
+		INSERT INTO asset (id_asset_parent,id_join, luas, nilai, provinsi, created_at) 
+		VALUES (?,?,?,?,?,NOW())
+		`
+		stmt, err := con.Prepare(query)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmt.Close()
+
+		result, err = stmt.Exec(dtAsset1.Id_asset_parent, tempIdJoin, luasBaru, nilaiBaru, dtAsset1.Provinsi)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+	} else {
+		query = `
+		INSERT INTO asset (id_join, perusahaan_id, luas, nilai, provinsi, created_at) 
+		VALUES (?,?,?,?,?,NOW())
+		`
+		stmt, err := con.Prepare(query)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmt.Close()
+
+		result, err = stmt.Exec(tempIdJoin, tempIdPerusahaan1, luasBaru, nilaiBaru, dtAsset1.Provinsi)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
 	}
+
 	lastId, err := result.LastInsertId()
 	if err != nil {
 		log.Println(err.Error())
 		return res, err
+	}
+
+	if dtAsset1.Id_asset_parent == dtAsset2.Id_asset_parent {
+		var idAsetChild string
+		queryParent := `SELECT id_asset_child FROM asset WHERE id_asset = ?`
+		stmtParent, err := con.Prepare(queryParent)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmtParent.Close()
+
+		err = stmtParent.QueryRow(dtAsset1.Id_asset_parent).Scan(&idAsetChild)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		idAsetChild = idAsetChild + ", " + strconv.Itoa(int(lastId))
+		queryUpdateParent := `UPDATE asset SET id_asset_child = ? WHERE id_asset = ?`
+		stmtUpdateParent, err := con.Prepare(queryUpdateParent)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmtUpdateParent.Close()
+
+		_, err = stmtUpdateParent.Exec(dtAsset1.Id_asset_parent, idAsetChild)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
 	}
 
 	queryUpdateAsset1 := "UPDATE asset SET deleted_at = NOW() WHERE id_asset = ?"
@@ -2016,7 +2120,7 @@ func GetAssetSurveyHistoryByAssetId(assetId string) (Response, error) {
 
 func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuasa *multipart.FileHeader,
 	id_asset, nama, surat_legalitas, tipe, usage, tag, nomor_legalitas, status,
-	alamat, kondisi, koordinat, batas_koordinat, luas, nilai string) (Response, error) {
+	alamat, kondisi, koordinat, batas_koordinat, luas, nilai, provinsi string) (Response, error) {
 	var res Response
 	con, err := db.DbConnection()
 	if err != nil {
@@ -2079,7 +2183,7 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 	}
 
 	// hapus tags dan usage di db
-	tagQuery := "DELETE FROM `asset_tag` WHERE id_asset = ?"
+	tagQuery := "DELETE FROM `asset_tags` WHERE id_asset = ?"
 	_, err = con.Exec(tagQuery, id_asset)
 	if err != nil {
 		res.Status = 401
@@ -2096,10 +2200,11 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 		return res, err
 	}
 
+	fmt.Println("query update")
 	query := `
 	UPDATE asset 
 	SET nama = ?, tipe = ?, nomor_legalitas = ?, status_asset = ?, surat_legalitas = ?, alamat = ?, kondisi = ?, titik_koordinat = ?,
-	batas_koordinat = ?, luas = ?, nilai = ?
+	batas_koordinat = ?, luas = ?, nilai = ?, provinsi = ?
 	WHERE id_asset = ?
 	`
 	stmt, err := con.Prepare(query)
@@ -2110,8 +2215,8 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 		return res, err
 	}
 	defer stmt.Close()
-	result, err := stmt.Exec(
-		nama, tipe, nomor_legalitas, status, surat_legalitas, alamat, kondisi, koordinat, batas_koordinat, luas, nilai, id_asset,
+	_, err = stmt.Exec(
+		nama, tipe, nomor_legalitas, status, surat_legalitas, alamat, kondisi, koordinat, batas_koordinat, luas, nilai, provinsi, id_asset,
 	)
 	if err != nil {
 		res.Status = 401
@@ -2120,16 +2225,13 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 		return res, err
 	}
 
-	lastId, err := result.LastInsertId()
-	if err != nil {
-		log.Println(err.Error())
-		return res, err
-	}
+	fmt.Println("tambah usage")
 
 	// tambah usage + tags
 	for _, usageId := range usageIds {
 		usageQuery := "INSERT INTO asset_penggunaan (id_asset, id_penggunaan) VALUES (?, ?)"
-		_, err = con.Exec(usageQuery, lastId, usageId)
+		fmt.Println("usage id: ", id_asset, usageId)
+		_, err = con.Exec(usageQuery, id_asset, usageId)
 		if err != nil {
 			res.Status = 401
 			res.Message = "Gagal menambah penggunaan"
@@ -2137,10 +2239,11 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 			return res, err
 		}
 	}
+	fmt.Println("tambah tags")
 
 	for _, tagId := range tagIds {
 		tagQuery := "INSERT INTO asset_tags (id_asset, id_tags) VALUES (?, ?)"
-		_, err = con.Exec(tagQuery, lastId, tagId)
+		_, err = con.Exec(tagQuery, id_asset, tagId)
 		if err != nil {
 			res.Status = 401
 			res.Message = "Gagal menambah tag"
@@ -2148,6 +2251,7 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 			return res, err
 		}
 	}
+	fmt.Println("tambah file legalitas")
 
 	// tambah filelegalitas
 	//source
@@ -2158,10 +2262,8 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 	}
 	defer srclegalitas.Close()
 
-	tempid := int(lastId)
-	_tempid := strconv.Itoa(tempid)
 	// Destination
-	filelegalitas.Filename = _tempid + "_" + filelegalitas.Filename
+	filelegalitas.Filename = id_asset + "_" + filelegalitas.Filename
 	pathFileLegalitas := "uploads/asset/file_legalitas/" + filelegalitas.Filename
 	dstlegalitas, err := os.Create("uploads/asset/file_legalitas/" + filelegalitas.Filename)
 	if err != nil {
@@ -2179,6 +2281,14 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 	}
 	dstlegalitas.Close()
 
+	lastId, err := strconv.Atoi(id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal konversi string"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	err = UpdateDataFotoPath("asset", "file_legalitas", pathFileLegalitas, "id_asset", int(lastId))
 	if err != nil {
 		return res, err
@@ -2194,7 +2304,7 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 	defer srcsuratkuasa.Close()
 
 	// Destination
-	suratkuasa.Filename = _tempid + "_" + suratkuasa.Filename
+	suratkuasa.Filename = id_asset + "_" + suratkuasa.Filename
 	pathFileSuratKuasa := "uploads/asset/surat_kuasa/" + suratkuasa.Filename
 	dstsuratkuasa, err := os.Create("uploads/asset/surat_kuasa/" + suratkuasa.Filename)
 	if err != nil {
@@ -2217,7 +2327,7 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 		return res, err
 	}
 
-	tempaset, err := GetAssetById(_tempid)
+	tempaset, err := GetAssetById(id_asset)
 	if err != nil {
 		res.Status = 401
 		res.Message = "get aset by id gagal"
@@ -2233,9 +2343,142 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 	return res, nil
 }
 
-func UnjoinAsset(input string) (Response, error) {
+func UnjoinAsset(asetId string) (Response, error) {
 	var res Response
-	// del
 
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var dtAsset Asset
+
+	queryAsset1 := "SELECT IFNULL(id_asset_parent,0),id_join FROM asset WHERE id_asset = ?"
+	stmtAsset1, err := con.Prepare(queryAsset1)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtAsset1.Close()
+
+	err = stmtAsset1.QueryRow(asetId).Scan(&dtAsset.Id_asset_parent, &dtAsset.Id_join)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	fmt.Println("update asset")
+	// update asset
+	query := `
+	UPDATE asset 
+	SET deleted_at = NOW()
+	WHERE id_asset = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(asetId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// update asset join
+	if dtAsset.Id_join != "" {
+		joinIds := strings.Split(dtAsset.Id_join, ",")
+		for _, joinId := range joinIds {
+			trimmedJoinId := strings.TrimSpace(joinId)
+
+			queryUpdateJoin := `
+			UPDATE asset 
+			SET deleted_at = NULL
+			WHERE id_asset = ?
+			`
+			stmtUpdateJoin, err := con.Prepare(queryUpdateJoin)
+			if err != nil {
+				res.Status = 401
+				res.Message = "stmt gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+			defer stmtUpdateJoin.Close()
+
+			_, err = stmtUpdateJoin.Exec(trimmedJoinId)
+			if err != nil {
+				res.Status = 401
+				res.Message = "exec gagal untuk id join " + trimmedJoinId
+				res.Data = err.Error()
+				return res, err
+			}
+		}
+	}
+
+	// update asset parent kalau ada
+	if dtAsset.Id_asset_parent != 0 {
+		queryParent := "SELECT id_asset_child FROM asset WHERE id_asset = ?"
+		var idAssetChild string
+		err = con.QueryRow(queryParent, dtAsset.Id_asset_parent).Scan(&idAssetChild)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal mendapatkan id_asset_child"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		childIds := strings.Split(idAssetChild, ",")
+		var updatedChildIds []string
+		for _, childId := range childIds {
+			if strings.TrimSpace(childId) != asetId {
+				updatedChildIds = append(updatedChildIds, strings.TrimSpace(childId))
+			}
+		}
+
+		newIdAssetChild := strings.Join(updatedChildIds, ",")
+		queryUpdateParent := `
+		UPDATE asset 
+		SET id_asset_child = ?
+		WHERE id_asset = ?
+		`
+		stmtUpdateParent, err := con.Prepare(queryUpdateParent)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal update id_asset_child"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmtUpdateParent.Close()
+
+		_, err = stmtUpdateParent.Exec(newIdAssetChild, dtAsset.Id_asset_parent)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal update id_asset_child"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	var tempaset Response
+	nId, _ := strconv.Atoi(asetId)
+	tempaset, _ = GetAssetById(strconv.Itoa(nId))
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil unjoin asset"
+	res.Data = tempaset.Data
+
+	defer db.DbClose(con)
 	return res, nil
 }

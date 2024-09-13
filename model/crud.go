@@ -3460,6 +3460,81 @@ func GetAllTags() (Response, error) {
 	return res, nil
 }
 
+func GetTagsUsed() (Response, error) {
+	var res Response
+	var arrTags = []Tags{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT at.id_tags, t.nama, t.detail
+	FROM asset_tags at
+	LEFT JOIN tags t ON at.id_tags = t.id
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	addedTags := make(map[int]bool)
+
+	for rows.Next() {
+		var dtTags Tags
+		err := rows.Scan(&dtTags.Id, &dtTags.Nama, &dtTags.Detail)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		if _, exists := addedTags[dtTags.Id]; !exists {
+			arrTags = append(arrTags, dtTags)
+			addedTags[dtTags.Id] = true
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(arrTags) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrTags
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
 func GetAllProvinsi() (Response, error) {
 	var res Response
 	var arrProvinsi = []Provinsi{}
@@ -3475,6 +3550,82 @@ func GetAllProvinsi() (Response, error) {
 	query := `
 	SELECT *
 	FROM provinsi
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	addedProvinsi := make(map[int]bool)
+
+	for rows.Next() {
+		var dtProvinsi Provinsi
+		err := rows.Scan(&dtProvinsi.Id, &dtProvinsi.Nama)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		if _, exists := addedProvinsi[dtProvinsi.Id]; !exists {
+			// If not added, append it to the array and mark it as added
+			arrProvinsi = append(arrProvinsi, dtProvinsi)
+			addedProvinsi[dtProvinsi.Id] = true
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(arrProvinsi) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrProvinsi
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetProvinsiUsed() (Response, error) {
+	var res Response
+	var arrProvinsi = []Provinsi{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT DISTINCT a.provinsi, p.nama
+	FROM asset a
+	LEFT JOIN provinsi p ON a.provinsi = p.id_provinsi
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {

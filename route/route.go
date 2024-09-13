@@ -51,6 +51,7 @@ func Init() *echo.Echo {
 	e.GET("/asset/detail/user/:id", controler.GetAssetDetailedByUserId)
 	e.GET("/asset/detail/perusahaan/:id", controler.GetAssetDetailedByPerusahaanId)
 	e.POST("/asset/join", controler.JoinAsset)
+	e.POST("/asset/unjoin/:id", controler.UnjoinAsset)
 
 	e.GET("/surveyor", controler.GetAllSurveyor)
 	e.GET("/surveyor/user/:id", controler.GetSurveyorByUserId)
@@ -120,6 +121,8 @@ func Init() *echo.Echo {
 	// usage tags provinsi
 	e.GET("/usage", controler.GetAllUsage)
 	e.GET("/tags", controler.GetAllTags)
+	e.GET("/tags/used", controler.GetTagsUsed)
 	e.GET("/provinsi", controler.GetAllProvinsi)
+	e.GET("/provinsi/used", controler.GetProvinsiUsed)
 	return e
 }

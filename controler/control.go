@@ -205,6 +205,17 @@ func JoinAsset(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func UnjoinAsset(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.UnjoinAsset(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func GetAssetRentedByUserId(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.GetAssetRentedByUserId(id)
@@ -239,9 +250,10 @@ func UpdateAssetByIdWithoutGambar(c echo.Context) error {
 	surat_legalitas := c.FormValue("surat_legalitas")
 	usage := c.FormValue("usage")
 	tags := c.FormValue("tags")
+	provinsi := c.FormValue("provinsi")
 	result, err := model.UpdateAssetByIdWithoutGambar(
 		fileLegalitas, suratKuasa, asetId, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
-		kondisi, koordinat, batasKoordinat, luas, nilai)
+		kondisi, koordinat, batasKoordinat, luas, nilai, provinsi)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -1270,6 +1282,26 @@ func GetAllTags(c echo.Context) error {
 
 func GetAllProvinsi(c echo.Context) error {
 	result, err := model.GetAllProvinsi()
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetTagsUsed(c echo.Context) error {
+	result, err := model.GetTagsUsed()
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetProvinsiUsed(c echo.Context) error {
+	result, err := model.GetProvinsiUsed()
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}

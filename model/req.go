@@ -62,16 +62,25 @@ func CreateSurveyReq(surveyreq string) (Response, error) {
 	}
 
 	// ambil data aset dan update bagian lama
-	var usage, luas, nilai, kondisi, batas_koordinat string
+	var luas, nilai, kondisi, batas_koordinat string
 	var tags []string
+	var usages []string
 
-	queryAsset := "SELECT `usage`, luas, nilai, kondisi, batas_koordinat FROM asset WHERE id_asset = ? LIMIT 1"
-	err = con.QueryRow(queryAsset, dtSurveyReq.Id_asset).Scan(&usage, &luas, &nilai, &kondisi, &batas_koordinat)
+	queryAsset := "SELECT id_penggunaan FROM asset_penggunaan WHERE id_asset = ?"
+	rowtags, err := con.Query(queryAsset, dtSurveyReq.Id_asset)
 	if err != nil {
 		res.Status = 401
 		res.Message = "query gagal"
 		res.Data = err.Error()
 		return res, err
+	}
+	defer rowtags.Close()
+	for rowtags.Next() {
+		var usage string
+		if err := rowtags.Scan(&usage); err != nil {
+			return res, err
+		}
+		usages = append(usages, usage)
 	}
 
 	queryTags := "SELECT id_tags FROM asset_tags WHERE id_asset = ?"
@@ -93,13 +102,14 @@ func CreateSurveyReq(surveyreq string) (Response, error) {
 	}
 
 	tagsString := strings.Join(tags, ", ")
+	usagesString := strings.Join(usages, ", ")
 
 	updateQuery := `
 		UPDATE survey_request 
 		SET usage_old = ?, luas_old = ?, nilai_old = ?, kondisi_old = ?, batas_koordinat_old = ?, tags_old = ? 
 		WHERE id_transaksi_jual_sewa = ?
 	`
-	_, err = con.Exec(updateQuery, usage, luas, nilai, kondisi, batas_koordinat, tagsString, lastId)
+	_, err = con.Exec(updateQuery, usagesString, luas, nilai, kondisi, batas_koordinat, tagsString, lastId)
 	if err != nil {
 		return res, err
 	}
