@@ -103,26 +103,6 @@ func Login(akun string) (Response, error) {
 		return res, err
 	}
 
-	getPrivilegeQuery := "SELECT pr.privilege_id, p.nama_privilege FROM user_privilege pr JOIN privilege p ON pr.privilege_id = p.privilege_id WHERE pr.user_id = ?;"
-	privilegestmt, err := con.Prepare(getPrivilegeQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer privilegestmt.Close()
-
-	var privilegeId int
-	var privilegeName string
-	err = privilegestmt.QueryRow(userId).Scan(&privilegeId, &privilegeName)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal mendapatkan privilege"
-		res.Data = err.Error()
-		return res, err
-	}
-
 	// berhasil login => update timestamp terakhir login
 	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
 	updatestmt, err := con.Prepare(updateQuery)
@@ -161,8 +141,6 @@ func Login(akun string) (Response, error) {
 		"denied_by_admin": loginUsr.Denied_by_admin,
 		"role_id":         roleId,
 		"role_nama":       roleName,
-		"privilege_id":    privilegeId,
-		"nama_privilege":  privilegeName,
 	}
 
 	defer db.DbClose(con)
@@ -302,25 +280,6 @@ func SignUp(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	insertprivquery := "INSERT INTO user_privilege (user_id,privilege_id) VALUES (?,?)"
-	insertprivstmt, err := con.Prepare(insertprivquery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertprivstmt.Close()
-
-	_, err = insertprivstmt.Exec(usr.Id, 17)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user privilege gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user detail gagal")
-	}
-	defer stmt.Close()
-
 	// set waktu login dan created_at login => update timestamp terakhir login
 	updateQuery := "UPDATE user SET login_timestamp = NOW(), created_at = NOW() WHERE user_id = ?"
 	updatestmt, err := con.Prepare(updateQuery)
@@ -383,7 +342,6 @@ func GetAllUser() (Response, error) {
 	FROM user u 
 	INNER JOIN user_detail ud ON u.user_id = ud.user_detail_id
 	LEFT JOIN user_role ur ON u.user_id = ur.user_id
-	LEFT JOIN user_privilege up ON u.user_id = up.user_id
 	LEFT JOIN role r ON ur.role_id = r.role_id
 	LEFT JOIN privilege p ON up.privilege_id = p.privilege_id
 	`
@@ -411,9 +369,7 @@ func GetAllUser() (Response, error) {
 		var dtUser User
 		var roleId int
 		var roleName string
-		var privilegeId int
-		var privilegeName string
-		err = result.Scan(&dtUser.Id, &dtUser.Username, &dtUser.Password, &dtUser.Nama_lengkap, &dtUser.Alamat, &dtUser.Jenis_kelamin, &dtUser.Tgl_lahir, &dtUser.Email, &dtUser.No_telp, &dtUser.Foto_profil, &dtUser.Ktp, &dtUser.Kelas, &dtUser.Status, &dtUser.Tipe, &dtUser.First_login, &dtUser.Denied_by_admin, &roleId, &roleName, &privilegeId, &privilegeName)
+		err = result.Scan(&dtUser.Id, &dtUser.Username, &dtUser.Password, &dtUser.Nama_lengkap, &dtUser.Alamat, &dtUser.Jenis_kelamin, &dtUser.Tgl_lahir, &dtUser.Email, &dtUser.No_telp, &dtUser.Foto_profil, &dtUser.Ktp, &dtUser.Kelas, &dtUser.Status, &dtUser.Tipe, &dtUser.First_login, &dtUser.Denied_by_admin, &roleId, &roleName)
 		if err != nil {
 			res.Status = 401
 			res.Message = "rows scan"
@@ -432,20 +388,8 @@ func GetAllUser() (Response, error) {
 			if !roleExists {
 				existingUser.UserRole = append(existingUser.UserRole, Role{Role_id: roleId, Nama_role: roleName})
 			}
-
-			privilegeExists := false
-			for _, p := range existingUser.UserPrivilege {
-				if p.Privilege_id == privilegeId {
-					privilegeExists = true
-					break
-				}
-			}
-			if !privilegeExists {
-				existingUser.UserPrivilege = append(existingUser.UserPrivilege, Privilege{Privilege_id: privilegeId, Nama_privilege: privilegeName})
-			}
 		} else {
 			dtUser.UserRole = []Role{{Role_id: roleId, Nama_role: roleName}}
-			dtUser.UserPrivilege = []Privilege{{Privilege_id: privilegeId, Nama_privilege: privilegeName}}
 			userMap[dtUser.Id] = &dtUser
 		}
 
@@ -518,7 +462,7 @@ func GetUserDetailedById(id_user string) (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT user_id, username, nama_lengkap, password, email, nomor_telepon FROM user WHERE user_id = ?"
+	query := "SELECT user_id, username, nama_lengkap, password, email, nomor_telepon,foto_profil,ktp FROM user WHERE user_id = ?"
 	stmt, err := con.Prepare(query)
 
 	if err != nil {
@@ -530,7 +474,7 @@ func GetUserDetailedById(id_user string) (Response, error) {
 	defer stmt.Close()
 
 	nId, _ := strconv.Atoi(id_user)
-	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.Password, &usr.Email, &usr.No_telp)
+	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.Password, &usr.Email, &usr.No_telp, &usr.Foto_profil, &usr.Ktp)
 	if err != nil {
 		res.Status = 401
 		res.Message = "rows gagal"
@@ -685,16 +629,7 @@ func UpdateUser(filefoto *multipart.FileHeader, userid, username, nama_lengkap, 
 	fmt.Println(filefoto.Header.Get("Content-type"))
 	// tipe := filefoto.Header.Get("Content-type")
 
-	tipeGambar := ".png"
-	// if tipe == "image/png" {
-	// 	tipeGambar = ".png"
-	// } else if tipe == "image/jpg" {
-	// 	tipeGambar = ".jpg"
-	// } else if tipe == "image/jpeg" {
-	// 	tipeGambar = ".jpg"
-	// }
-
-	filefoto.Filename = userid + tipeGambar
+	filefoto.Filename = userid + "_" + filefoto.Filename
 	pathFotoFile := "uploads/user/foto_profil/" + filefoto.Filename
 	//source
 	srcfoto, err := filefoto.Open()
@@ -734,25 +669,8 @@ func UpdateUser(filefoto *multipart.FileHeader, userid, username, nama_lengkap, 
 	return res, nil
 }
 
-func UpdateUserById(input string) (Response, error) {
+func UpdateUserById(filefoto *multipart.FileHeader, id, username, password, nama_lengkap, email, no_telp string) (Response, error) {
 	var res Response
-
-	type TempUpdateUser struct {
-		Id       int    `json:"id"`
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Email    string `json:"email"`
-		No_telp  string `json:"no_telp"`
-	}
-
-	var dtUser TempUpdateUser
-	err := json.Unmarshal([]byte(input), &dtUser)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -762,7 +680,7 @@ func UpdateUserById(input string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE user SET username = ?, password = ?, email = ?, nomor_telepon = ?, updated_at = NOW() WHERE user_id = ? "
+	query := "UPDATE user SET username = ?, password = ?, nama_lengkap = ?, email = ?, nomor_telepon = ?, updated_at = NOW() WHERE user_id = ? "
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -772,11 +690,44 @@ func UpdateUserById(input string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtUser.Username, dtUser.Password, dtUser.Email, dtUser.No_telp, dtUser.Id)
+	result, err := stmt.Exec(username, password, nama_lengkap, email, no_telp, id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
 		res.Data = err.Error()
+		return res, err
+	}
+
+	filefoto.Filename = id + "_" + filefoto.Filename
+	pathFotoFile := "uploads/user/foto_profil/" + filefoto.Filename
+	//source
+	srcfoto, err := filefoto.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcfoto.Close()
+
+	// Destination
+	dstfoto, err := os.Create("uploads/user/foto_profil/" + filefoto.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstfoto, srcfoto); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstfoto.Close()
+
+	nId, _ := strconv.Atoi(id)
+	err = UpdateDataFotoPath("user", "foto_profil", pathFotoFile, "user_id", nId)
+	if err != nil {
 		return res, err
 	}
 
@@ -1292,12 +1243,16 @@ func GetAllPerusahaanJoinedByUserId(user_id string) (Response, error) {
 	return res, nil
 }
 
-// CRUD user_privilege ============================================================================
-func CreateUserPriv(userPriv string) (Response, error) {
+func AddAdmin(input string) (Response, error) {
 	var res Response
-	var dtUserPriv = UserPrivilege{}
 
-	err := json.Unmarshal([]byte(userPriv), &dtUserPriv)
+	type UserCompany struct {
+		Id_user string `user_id`
+		Id_role string `role_id`
+	}
+
+	var tempUserCompany UserCompany
+	err := json.Unmarshal([]byte(input), &tempUserCompany)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal decode json"
@@ -1313,332 +1268,101 @@ func CreateUserPriv(userPriv string) (Response, error) {
 		return res, err
 	}
 
-	query := "INSERT INTO user_privilege (privilege_id, user_id) VALUES (?,?)"
-	stmt, err := con.Prepare(query)
+	// Check if id_user exists
+	var userExists bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE user_id = ?)", tempUserCompany.Id_user).Scan(&userExists)
 	if err != nil {
 		res.Status = 401
-		res.Message = "stmt gagal"
+		res.Message = "gagal mengecek user"
 		res.Data = err.Error()
 		return res, err
 	}
-	defer stmt.Close()
-
-	result, err := stmt.Exec(dtUserPriv.Privilege_id, dtUserPriv.User_id)
-	if err != nil {
-		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	lastId, err := result.LastInsertId()
-	if err != nil {
-		res.Status = 401
-		res.Message = "Last Id gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	dtUserPriv.User_privilege_id = int(lastId)
-
-	res.Status = http.StatusOK
-	res.Message = "Berhasil memasukkan data"
-	res.Data = dtUserPriv
-
-	defer db.DbClose(con)
-	return res, nil
-}
-
-func GetAllUserPriv() (Response, error) {
-	var res Response
-	var arrUserPriv = []UserPrivilege{}
-	var dtUserPriv UserPrivilege
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	query := "SELECT * FROM user_privilege"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
-
-	result, err := stmt.Query()
-	if err != nil {
-		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer result.Close()
-	for result.Next() {
-		err = result.Scan(&dtUserPriv.User_privilege_id, &dtUserPriv.Privilege_id, &dtUserPriv.User_id)
-		if err != nil {
-			res.Status = 401
-			res.Message = "rows scan"
-			res.Data = err.Error()
-			return res, err
-		}
-		arrUserPriv = append(arrUserPriv, dtUserPriv)
-	}
-
-	res.Status = http.StatusOK
-	res.Message = "Berhasil mengambil data"
-	res.Data = arrUserPriv
-
-	defer db.DbClose(con)
-	return res, nil
-}
-
-func GetUserPrivById(user_priv_id string) (Response, error) {
-	var res Response
-	var dtUserPriv UserPrivilege
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	query := "SELECT * FROM user_privilege WHERE user_privilege_id = ?"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
-	nId, _ := strconv.Atoi(user_priv_id)
-	err = stmt.QueryRow(nId).Scan(&dtUserPriv.User_privilege_id, &dtUserPriv.User_id)
-	if err != nil {
-		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	res.Status = http.StatusOK
-	res.Message = "Berhasil mengambil data"
-	res.Data = dtUserPriv
-
-	defer db.DbClose(con)
-	return res, nil
-}
-
-func GetUserPrivByUserId(user_id string) (Response, error) {
-	var res Response
-	var dtUserPriv UserPrivilege
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	query := "SELECT * FROM user_privilege WHERE user_id = ?"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
-	nId, _ := strconv.Atoi(user_id)
-	err = stmt.QueryRow(nId).Scan(&dtUserPriv.User_privilege_id, &dtUserPriv.User_id)
-	if err != nil {
-		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	res.Status = http.StatusOK
-	res.Message = "Berhasil mengambil data"
-	res.Data = dtUserPriv
-
-	defer db.DbClose(con)
-	return res, nil
-}
-
-func GetUserPrivDetailByUserId(user_id string) (Response, error) {
-	var res Response
-	var privileges []map[string]interface{}
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	query := "SELECT up.user_id, up.privilege_id, p.nama_privilege FROM user_privilege up JOIN privilege p ON up.privilege_id = p.privilege_id WHERE up.user_id = ?"
-
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
-
-	nId, _ := strconv.Atoi(user_id)
-	rows, err := stmt.Query(nId)
-	// err = stmt.QueryRow(nId).Scan(&temp_user_id, &temp_privilege_id, &temp_nama_privilege)
-	if err != nil {
-		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var temp_privilege_id, temp_user_id int
-		var temp_nama_privilege string
-
-		err := rows.Scan(&temp_user_id, &temp_privilege_id, &temp_nama_privilege)
-		if err != nil {
-			res.Status = 401
-			res.Message = "scan gagal"
-			res.Data = err.Error()
-			return res, err
-		}
-
-		privilege := map[string]interface{}{
-			"user_id":        temp_user_id,
-			"privilege_id":   temp_privilege_id,
-			"nama_privilege": temp_nama_privilege,
-		}
-		privileges = append(privileges, privilege)
-	}
-
-	if len(privileges) == 0 {
+	if !userExists {
 		res.Status = 404
-		res.Message = "Data tidak ditemukan"
+		res.Message = "User tidak ditemukan"
 		res.Data = nil
 		return res, nil
 	}
 
-	res.Status = http.StatusOK
-	res.Message = "Berhasil mengambil data"
-	res.Data = privileges
-
-	defer db.DbClose(con)
-	return res, nil
-}
-
-func UpdateUserPriv(userPriv string) (Response, error) {
-	var res Response
-
-	var dtUserPriv = UserPrivilege{}
-
-	err := json.Unmarshal([]byte(userPriv), &dtUserPriv)
+	// Check if id_role exists
+	var roleExists bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM role WHERE role_id = ?)", tempUserCompany.Id_role).Scan(&roleExists)
 	if err != nil {
 		res.Status = 401
-		res.Message = "gagal decode json"
+		res.Message = "gagal mengecek role"
+		res.Data = err.Error()
+		return res, err
+	}
+	if !roleExists {
+		res.Status = 404
+		res.Message = "Role tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	var recordExists bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM user_role WHERE user_id = ? AND role_id = ?)", tempUserCompany.Id_user, tempUserCompany.Id_role).Scan(&recordExists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengecek kombinasi user dan role"
 		res.Data = err.Error()
 		return res, err
 	}
 
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
+	if recordExists {
+		// If the record exists, perform an update
+		query := "UPDATE user_role SET role_id = ? WHERE user_id = ?"
+		stmt, err := con.Prepare(query)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmt.Close()
 
-	query := "UPDATE user_privilege SET privilege_id = ?, user_id = ? WHERE user_privilege_id = ?"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
+		_, err = stmt.Exec(tempUserCompany.Id_role, tempUserCompany.Id_user)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		res.Message = "Berhasil memperbarui role user"
+	} else {
+		// If the record doesn't exist, insert a new one
+		query := "INSERT INTO user_role (`user_id`, `role_id`) VALUES (?,?)"
+		stmt, err := con.Prepare(query)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmt.Close()
 
-	result, err := stmt.Exec(dtUserPriv.Privilege_id, dtUserPriv.User_id, dtUserPriv.User_privilege_id)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	res.Status = http.StatusOK
-	res.Message = "Berhasil mengupdate data"
-	res.Data = result
-
-	defer db.DbClose(con)
-	return res, nil
-}
-
-func DeleteUserPriv(userPriv string) (Response, error) {
-	var res Response
-
-	var dtUserPriv = UserPrivilege{}
-
-	err := json.Unmarshal([]byte(userPriv), &dtUserPriv)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	query := "DELETE FROM user_privilege WHERE user_privilege_id = ?"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
-
-	result, err := stmt.Exec(dtUserPriv.User_privilege_id)
-	if err != nil {
-		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
+		_, err = stmt.Exec(tempUserCompany.Id_user, tempUserCompany.Id_role)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		res.Message = "Berhasil memasukkan user ke perusahaan"
 	}
 
 	res.Status = http.StatusOK
-	res.Message = "Berhasil menghapus data"
-	res.Data = result
+	res.Message = "Berhasil memasukkan user ke perusahaan"
+	res.Data = map[string]string{
+		"id_user": tempUserCompany.Id_user,
+		"id_role": tempUserCompany.Id_role,
+	}
 
 	defer db.DbClose(con)
-
 	return res, nil
 }
 
 // CRUD user_role
-
 func CreateUserRole(userRole string) (Response, error) {
 	var res Response
 	var dtUserRole = UserRole{}

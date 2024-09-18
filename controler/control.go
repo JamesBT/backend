@@ -263,6 +263,20 @@ func UpdateAssetByIdWithoutGambar(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func FilterAsset(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.FilterAsset(string(input))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 // perusahaan
 func TambahPerusahaan(c echo.Context) error {
 	userid := c.FormValue("userid")
@@ -368,9 +382,33 @@ func GetAllPerusahaanJoinedByUserId(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-// privilege
+func AddUserCompany(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.AddUserCompany(string(input))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
 
-// role
+func AddAdmin(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.AddAdmin(string(input))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
 
 // surveyor
 func LoginSurveyor(c echo.Context) error {
@@ -813,11 +851,17 @@ func GetUserDetailedById(c echo.Context) error {
 
 // admin - management user
 func UpdateUserById(c echo.Context) error {
-	datauser, err := io.ReadAll(c.Request().Body)
+	userId := c.FormValue("id")
+	username := c.FormValue("username")
+	password := c.FormValue("password")
+	nama_lengkap := c.FormValue("nama_lengkap")
+	email := c.FormValue("email")
+	no_telp := c.FormValue("no_telp")
+	fileFoto, err := c.FormFile("fileFoto")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
-	result, err := model.UpdateUserById(string(datauser))
+	result, err := model.UpdateUserById(fileFoto, userId, username, password, nama_lengkap, email, no_telp)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -939,9 +983,73 @@ func AdminUserManagement(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-// user_privilege
+// priv role
+func CreateRole(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.CreateRole(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
 
-// user_role
+func EditRole(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.CreateRole(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllRole(c echo.Context) error {
+	result, err := model.GetAllRole()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+// kelas
+func CreateKelas(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.CreateKelas(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UpdateKelas(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.UpdateKelas(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
 
 // fungsi tambahan
 func GetFoto(c echo.Context) error {
@@ -1302,6 +1410,24 @@ func GetTagsUsed(c echo.Context) error {
 
 func GetProvinsiUsed(c echo.Context) error {
 	result, err := model.GetProvinsiUsed()
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func SendProposal(c echo.Context) error {
+	idAsset := c.FormValue("idAsset")
+	idUser := c.FormValue("idUser")
+	idPerusahaan := c.FormValue("idPerusahaan")
+	deskripsi := c.FormValue("deskripsi")
+	proposal, err := c.FormFile("proposal")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.SendProposal(proposal, idAsset, idUser, idPerusahaan, deskripsi)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}

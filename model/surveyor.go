@@ -103,26 +103,6 @@ func LoginSurveyor(akun string) (Response, error) {
 		return res, err
 	}
 
-	getPrivilegeQuery := "SELECT pr.privilege_id, p.nama_privilege FROM user_privilege pr JOIN privilege p ON pr.privilege_id = p.privilege_id WHERE pr.user_id = ?;"
-	privilegestmt, err := con.Prepare(getPrivilegeQuery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt update gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer privilegestmt.Close()
-
-	var privilegeId int
-	var privilegeName string
-	err = privilegestmt.QueryRow(userId).Scan(&privilegeId, &privilegeName)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal mendapatkan privilege"
-		res.Data = err.Error()
-		return res, err
-	}
-
 	// berhasil login => update timestamp terakhir login
 	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
 	updatestmt, err := con.Prepare(updateQuery)
@@ -161,8 +141,6 @@ func LoginSurveyor(akun string) (Response, error) {
 		"denied_by_admin": loginUsr.Denied_by_admin,
 		"role_id":         roleId,
 		"role_nama":       roleName,
-		"privilege_id":    privilegeId,
-		"nama_privilege":  privilegeName,
 	}
 
 	defer db.DbClose(con)
@@ -309,25 +287,6 @@ func SignUpSurveyor(akun string) (Response, error) {
 		res.Message = "insert user role gagal"
 		res.Data = err.Error()
 		return res, errors.New("insert user role gagal")
-	}
-	defer stmt.Close()
-
-	insertprivquery := "INSERT INTO user_privilege (user_id,privilege_id) VALUES (?,?)"
-	insertprivstmt, err := con.Prepare(insertprivquery)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer insertprivstmt.Close()
-
-	_, err = insertprivstmt.Exec(usr.Id, 17)
-	if err != nil {
-		res.Status = 401
-		res.Message = "insert user privilege gagal"
-		res.Data = err.Error()
-		return res, errors.New("insert user privilege gagal")
 	}
 	defer stmt.Close()
 

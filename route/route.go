@@ -32,6 +32,8 @@ func Init() *echo.Echo {
 	e.GET("/user/ktp/:id", controler.GetUserKTP)
 	e.GET("/user/foto/:id", controler.GetUserKTP)
 	e.GET("/user/unverified", controler.GetAllUserUnverified)
+	e.POST("/user/perusahaan", controler.AddUserCompany)
+	e.POST("/user/admin", controler.AddAdmin)
 	e.GET("/user/perusahaan/:id", controler.GetAllUserByPerusahaanId)
 	e.GET("/user/perusahaan/joined/:id", controler.GetAllPerusahaanJoinedByUserId)
 	e.GET("/user/admin/management", controler.AdminUserManagement)
@@ -46,7 +48,7 @@ func Init() *echo.Echo {
 	e.POST("/asset/child", controler.TambahAssetChild)
 	e.GET("/asset/child/:id", controler.GetAssetChildByParentId)
 	e.GET("/asset/history/:id", controler.GetAssetSurveyHistoryByAssetId)
-
+	e.GET("/asset/filter", controler.FilterAsset)
 	e.GET("/asset/detail/:id", controler.GetAssetDetailedById)
 	e.GET("/asset/detail/user/:id", controler.GetAssetDetailedByUserId)
 	e.GET("/asset/detail/perusahaan/:id", controler.GetAssetDetailedByPerusahaanId)
@@ -92,6 +94,7 @@ func Init() *echo.Echo {
 	e.PUT("/verify/asset/accept", controler.VerifyAssetAccept)
 	e.PUT("/verify/asset/reassign", controler.VerifyAssetReassign)
 
+	e.POST("/proposal", controler.SendProposal)
 	e.POST("/tranreq", controler.CreateTranReq)
 	e.GET("/tranreq", controler.GetAllTranReq)
 	e.GET("/tranreq/user", controler.GetAllUserTransaction)
@@ -108,6 +111,11 @@ func Init() *echo.Echo {
 	e.GET("/notification/user/:id", controler.GetNotificationByUserIdReceiver)
 	e.GET("/notification/perusahaan/:id", controler.GetNotificationByPerusahaanIdReceiver)
 
+	e.GET("/role", controler.GetAllRole)
+	e.POST("/role", controler.CreateRole)
+	e.PUT("/role", controler.EditRole)
+	e.POST("/kelas", controler.CreateKelas)
+	e.PUT("/kelas", controler.UpdateKelas)
 	e.GET("/kelas", controler.GetAllKelas)
 	e.GET("/business_field", controler.GetAllBusinessField)
 

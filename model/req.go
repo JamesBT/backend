@@ -1251,6 +1251,90 @@ func GetAllUserTransaction() (Response, error) {
 	return res, nil
 }
 
+func SendProposal(proposal *multipart.FileHeader, id_asset, user_id, perusahaan_id, deskripsi string) (Response, error) {
+	var res Response
+	var dtTranReq = TransactionRequest{}
+	dtTranReq.Perusahaan_id, _ = strconv.Atoi(perusahaan_id)
+	dtTranReq.User_id, _ = strconv.Atoi(user_id)
+	dtTranReq.Id_asset, _ = strconv.Atoi(id_asset)
+	dtTranReq.Deskripsi = deskripsi
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "INSERT INTO transaction_request (id_asset, user_id, perusahaan_id, deskripsi) VALUES (?,?,?,?)"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(dtTranReq.Id_asset, dtTranReq.User_id, dtTranReq.Perusahaan_id, dtTranReq.Deskripsi)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	lastId, err := result.LastInsertId()
+	if err != nil {
+		res.Status = 401
+		res.Message = "Last Id gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	dtTranReq.Id_transaksi_jual_sewa = int(lastId)
+
+	// insert file proposal
+	proposal.Filename = strconv.Itoa(dtTranReq.Id_transaksi_jual_sewa) + "_" + proposal.Filename
+	pathFotoFile := "uploads/transaction/" + proposal.Filename
+	//source
+	srcfoto, err := proposal.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcfoto.Close()
+
+	// Destination
+	dstfoto, err := os.Create("uploads/transaction/" + proposal.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstfoto, srcfoto); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstfoto.Close()
+
+	err = UpdateDataFotoPath("transaction_request", "proposal", pathFotoFile, "id_transaksi_jual_sewa", dtTranReq.Id_transaksi_jual_sewa)
+	if err != nil {
+		return res, err
+	}
+	dtTranReq.Proposal = pathFotoFile
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil memasukkan data"
+	res.Data = dtTranReq
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
 // func UserManagementGetMeetingByUserId(user_id string) (Response, error) {
 // 	var res Response
 // 	var assetsMap = make(map[int][]Progress)

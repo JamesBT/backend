@@ -169,7 +169,7 @@ func GetAllPerusahaanUnverified() (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT perusahaan_id, status, name, username, lokasi, tipe, dokumen_kepemilikan, dokumen_perusahaan, modal_awal, deskripsi, created_at FROM perusahaan WHERE status = 'N'"
+	query := "SELECT perusahaan_id, status, name, username, lokasi, tipe, dokumen_kepemilikan, dokumen_perusahaan, modal_awal, deskripsi, created_at FROM perusahaan WHERE status = 'W'"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -531,6 +531,109 @@ func UpdatePerusahaanById(input string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
 	res.Data = dtPerusahaan
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func AddUserCompany(input string) (Response, error) {
+	var res Response
+
+	type UserCompany struct {
+		Id_user       string `user_id`
+		Id_perusahaan string `perusahaan_id`
+		Id_role       string `role_id`
+	}
+	var tempUserCompany UserCompany
+	err := json.Unmarshal([]byte(input), &tempUserCompany)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// Check if id_user exists
+	var userExists bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE user_id = ?)", tempUserCompany.Id_user).Scan(&userExists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengecek user"
+		res.Data = err.Error()
+		return res, err
+	}
+	if !userExists {
+		res.Status = 404
+		res.Message = "User tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	// Check if id_perusahaan exists
+	var perusahaanExists bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM perusahaan WHERE perusahaan_id = ?)", tempUserCompany.Id_perusahaan).Scan(&perusahaanExists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengecek perusahaan"
+		res.Data = err.Error()
+		return res, err
+	}
+	if !perusahaanExists {
+		res.Status = 404
+		res.Message = "Perusahaan tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	// Check if id_role exists
+	var roleExists bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM roles WHERE role_id = ?)", tempUserCompany.Id_role).Scan(&roleExists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengecek role"
+		res.Data = err.Error()
+		return res, err
+	}
+	if !roleExists {
+		res.Status = 404
+		res.Message = "Role tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	query := "INSERT INTO user_perusahaan (`id_user`, `id_perusahaan`, `id_role`) VALUES (?,?,?)"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(tempUserCompany.Id_user, tempUserCompany.Id_perusahaan, tempUserCompany.Id_role)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil memasukkan user ke perusahaan"
+	res.Data = map[string]string{
+		"id_user":       tempUserCompany.Id_user,
+		"id_perusahaan": tempUserCompany.Id_perusahaan,
+		"id_role":       tempUserCompany.Id_role,
+	}
 
 	defer db.DbClose(con)
 	return res, nil

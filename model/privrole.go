@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // CRUD privilege ============================================================================
@@ -310,11 +311,16 @@ func DeletePrivilegeById(hakakses string) (Response, error) {
 }
 
 // CRUD role ============================================================================
-func CreateRole(peran string) (Response, error) {
-	var res Response
-	var dtRole = Role{}
 
-	err := json.Unmarshal([]byte(peran), &dtRole)
+func CreateRole(userRole string) (Response, error) {
+	var res Response
+
+	type InputRole struct {
+		Role_name  string `json:"role"`
+		Privileges string `json:"privilege"`
+	}
+	var dtUserRole InputRole
+	err := json.Unmarshal([]byte(userRole), &dtUserRole)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal decode json"
@@ -340,7 +346,7 @@ func CreateRole(peran string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtRole.Nama_role)
+	result, err := stmt.Exec(dtUserRole.Role_name)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -354,20 +360,60 @@ func CreateRole(peran string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	dtRole.Role_id = int(lastId)
+
+	privileges := strings.Split(dtUserRole.Privileges, ",")
+	insertPrivilegeQuery := "INSERT INTO role_privilege (id_role, id_privilege) VALUES (?, ?)"
+
+	for _, privilege := range privileges {
+		privilegeId := strings.TrimSpace(privilege)
+
+		stmt, err := con.Prepare(insertPrivilegeQuery)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt privilege gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		_, err = stmt.Exec(lastId, privilegeId)
+		stmt.Close()
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec privilege gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
 
 	res.Status = http.StatusOK
-	res.Message = "Berhasil memasukkan data"
-	res.Data = dtRole
+	res.Message = "Berhasil membuat role privilege"
+	res.Data = map[string]interface{}{
+		"id_role":    lastId,
+		"role":       dtUserRole.Role_name,
+		"privileges": dtUserRole.Privileges,
+	}
 
 	defer db.DbClose(con)
 	return res, nil
 }
 
-func GetAllRole() (Response, error) {
+func EditRole(userRole string) (Response, error) {
 	var res Response
-	var arrRole = []Role{}
-	var dtRole Role
+
+	type InputRole struct {
+		// id role bukan role_privilege
+		Id_role    string `json:"id"`
+		Role_name  string `json:"role"`
+		Privileges string `json:"privilege"`
+	}
+	var dtUserRole InputRole
+	err := json.Unmarshal([]byte(userRole), &dtUserRole)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -377,7 +423,100 @@ func GetAllRole() (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT * FROM role"
+	query := "UPDATE role SET nama_role=? WHERE role_id = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(dtUserRole.Role_name, dtUserRole.Id_role)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	deletePrivilegesQuery := "DELETE FROM role_privilege WHERE id_role = ?"
+	stmt, err = con.Prepare(deletePrivilegesQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt delete gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	_, err = stmt.Exec(dtUserRole.Id_role)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec delete privilege gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	stmt.Close()
+
+	privileges := strings.Split(dtUserRole.Privileges, ",")
+	insertPrivilegeQuery := "INSERT INTO role_privilege (id_role, id_privilege) VALUES (?, ?)"
+
+	for _, privilege := range privileges {
+		privilegeId := strings.TrimSpace(privilege)
+
+		stmt, err := con.Prepare(insertPrivilegeQuery)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt privilege gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		_, err = stmt.Exec(dtUserRole.Id_role, privilegeId)
+		stmt.Close()
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec privilege gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil membuat role privilege"
+	res.Data = map[string]interface{}{
+		"id_role":    dtUserRole.Id_role,
+		"role":       dtUserRole.Role_name,
+		"privileges": dtUserRole.Privileges,
+	}
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllRole() (Response, error) {
+	var res Response
+	var arrRole = []Role{}
+
+	// Map to track roles and their associated privileges
+	roleMap := make(map[int]*Role)
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT r.role_id, r.nama_role, p.nama_privilege
+	FROM role_privilege rp
+	LEFT JOIN privilege p ON rp.id_privilege = p.privilege_id
+	LEFT JOIN role r ON rp.id_role = r.role_id
+	ORDER BY r.role_id
+	`
+
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -395,17 +534,40 @@ func GetAllRole() (Response, error) {
 		return res, err
 	}
 	defer result.Close()
+
+	// Iterate over the results and populate the roleMap
 	for result.Next() {
-		err = result.Scan(&dtRole.Role_id, &dtRole.Nama_role)
+		var roleId int
+		var roleName, privilege string
+
+		err = result.Scan(&roleId, &roleName, &privilege)
 		if err != nil {
 			res.Status = 401
 			res.Message = "rows scan"
 			res.Data = err.Error()
 			return res, err
 		}
-		arrRole = append(arrRole, dtRole)
+
+		// Check if the role already exists in the map
+		if _, exists := roleMap[roleId]; !exists {
+			// If not, create a new Role entry and add it to the map
+			roleMap[roleId] = &Role{
+				Role_id:   roleId,
+				Nama_role: roleName,
+				Privilege: []string{},
+			}
+		}
+
+		// Append the privilege to the role's Privileges list
+		roleMap[roleId].Privilege = append(roleMap[roleId].Privilege, privilege)
 	}
 
+	// Convert the map to a slice for the response
+	for _, role := range roleMap {
+		arrRole = append(arrRole, *role)
+	}
+
+	// Prepare the response
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
 	res.Data = arrRole
@@ -511,53 +673,6 @@ func GetRoleByName(nama_role string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
 	res.Data = dtRoles
-
-	defer db.DbClose(con)
-	return res, nil
-}
-
-func UpdateRoleById(peran string) (Response, error) {
-	var res Response
-
-	var dtRole = Role{}
-
-	err := json.Unmarshal([]byte(peran), &dtRole)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	con, err := db.DbConnection()
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal membuka database"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	query := "UPDATE role SET nama_role = ? WHERE role_id = ?"
-	stmt, err := con.Prepare(query)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer stmt.Close()
-
-	result, err := stmt.Exec(dtRole.Nama_role, dtRole.Role_id)
-	if err != nil {
-		res.Status = 401
-		res.Message = "stmt gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	res.Status = http.StatusOK
-	res.Message = "Berhasil mengupdate data"
-	res.Data = result
 
 	defer db.DbClose(con)
 	return res, nil

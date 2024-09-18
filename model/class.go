@@ -7,24 +7,23 @@ type Response struct {
 }
 
 type User struct {
-	Id               int         `json:"id"`
-	Username         string      `json:"username"`
-	Password         string      `json:"password"`
-	Nama_lengkap     string      `json:"nama_lengkap"`
-	Alamat           string      `json:"alamat"`
-	Jenis_kelamin    string      `json:"jenis_kelamin"`
-	Tgl_lahir        string      `json:"tgl_lahir"`
-	Email            string      `json:"email"`
-	No_telp          string      `json:"no_telp"`
-	Foto_profil      string      `json:"foto_profil"`
-	Ktp              string      `json:"ktp"`
-	Kelas            int         `json:"kelas"`
-	Status           string      `json:"status"`
-	Tipe             int         `json:"tipe"`
-	First_login      string      `json:"first_login"`
-	Denied_by_admin  string      `json:"denied_by_admin"`
-	UserRole         []Role      `json:"user_role"`
-	UserPrivilege    []Privilege `json:"user_privilege"`
+	Id               int    `json:"id"`
+	Username         string `json:"username"`
+	Password         string `json:"password"`
+	Nama_lengkap     string `json:"nama_lengkap"`
+	Alamat           string `json:"alamat"`
+	Jenis_kelamin    string `json:"jenis_kelamin"`
+	Tgl_lahir        string `json:"tgl_lahir"`
+	Email            string `json:"email"`
+	No_telp          string `json:"no_telp"`
+	Foto_profil      string `json:"foto_profil"`
+	Ktp              string `json:"ktp"`
+	Kelas            int    `json:"kelas"`
+	Status           string `json:"status"`
+	Tipe             int    `json:"tipe"`
+	First_login      string `json:"first_login"`
+	Denied_by_admin  string `json:"denied_by_admin"`
+	UserRole         []Role `json:"user_role"`
 	PerusahaanJoined []Perusahaan
 }
 
@@ -32,7 +31,6 @@ type Asset struct {
 	Id_asset          int        `json:"id_asset"`
 	Nama              string     `json:"nama"`
 	Id_asset_parent   int        `json:"id_asset_parent"`
-	Id_perusahaan     int        `json:"id_perusahaan"`
 	Id_join           string     `json:"id_join"`
 	Tipe              string     `json:"tipe"`
 	Nomor_legalitas   string     `json:"nomor_legalitas"`
@@ -91,8 +89,9 @@ type Privilege struct {
 }
 
 type Role struct {
-	Role_id   int    `json:"role_id"`
-	Nama_role string `json:"nama_role"`
+	Role_id   int      `json:"role_id"`
+	Nama_role string   `json:"nama_role"`
+	Privilege []string `json:"privilege"`
 }
 
 type Surveyor struct {
@@ -152,14 +151,8 @@ type TransactionRequest struct {
 	Created_at             string `json:"created_at"`
 }
 
-type UserPrivilege struct {
-	User_privilege_id int `json:"user_privilege_id"`
-	Privilege_id      int `json:"privilege_id"`
-	User_id           int `json:"user_id"`
-}
-
 type UserRole struct {
-	User_role_id int `json:"user_privilege_id"`
+	User_role_id int `json:"user_role_id"`
 	User_id      int `json:"user_id"`
 	Role_id      int `json:"role_id"`
 }
