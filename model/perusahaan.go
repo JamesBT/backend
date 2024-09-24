@@ -208,8 +208,44 @@ func GetAllPerusahaanUnverified() (Response, error) {
 
 func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 	var res Response
-	var dtPerusahaan Perusahaan
-	var dtUser []User
+	type TempUser struct {
+		Id               int    `json:"id"`
+		Username         string `json:"username"`
+		Password         string `json:"password"`
+		Nama_lengkap     string `json:"nama_lengkap"`
+		Alamat           string `json:"alamat"`
+		Jenis_kelamin    string `json:"jenis_kelamin"`
+		Tgl_lahir        string `json:"tgl_lahir"`
+		Email            string `json:"email"`
+		No_telp          string `json:"no_telp"`
+		Foto_profil      string `json:"foto_profil"`
+		Ktp              string `json:"ktp"`
+		Kelas            int    `json:"kelas"`
+		Status           string `json:"status"`
+		Tipe             int    `json:"tipe"`
+		First_login      string `json:"first_login"`
+		Denied_by_admin  string `json:"denied_by_admin"`
+		UserRole         string `json:"user_role"`
+		PerusahaanJoined []Perusahaan
+	}
+	type TempPerusahaan struct {
+		Id                  int     `json:"id_perusahaan"`
+		Status              string  `json:"status"`
+		Nama                string  `json:"nama"`
+		Username            string  `json:"username"`
+		Lokasi              string  `json:"lokasi"`
+		Kelas               int     `json:"kelas"`
+		Tipe                string  `json:"tipe"`
+		Dokumen_kepemilikan string  `json:"dokumen_kepemilikan"`
+		Dokumen_perusahaan  string  `json:"dokumen_perusahaan"`
+		Modal               float64 `json:"modal"`
+		Deskripsi           string  `json:"deskripsi"`
+		CreatedAt           string  `json:"created_at"`
+		Field               []BusinessField
+		UserJoined          []TempUser
+	}
+	var dtPerusahaan TempPerusahaan
+	var dtUser []TempUser
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -221,10 +257,11 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 
 	query := `
 		SELECT p.perusahaan_id, p.status, p.name, p.username, p.lokasi, p.tipe, IFNULL(p.kelas,0), p.dokumen_kepemilikan, p.dokumen_perusahaan,
-			p.modal_awal,p.deskripsi, p.created_at, u.user_id, u.username, u.nama_lengkap 
+			p.modal_awal,p.deskripsi, p.created_at, u.user_id, u.username, u.nama_lengkap, IFNULL(r.nama_role,"")
 		FROM perusahaan p
 		LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
 		LEFT JOIN user u on up.id_user = u.user_id
+		LEFT JOIN role r ON up.id_role = r.role_id 
 		WHERE p.perusahaan_id = ? 
 	`
 	stmt, err := con.Prepare(query)
@@ -247,11 +284,11 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var usr User
+		var usr TempUser
 		err = rows.Scan(&dtPerusahaan.Id, &dtPerusahaan.Status, &dtPerusahaan.Nama, &dtPerusahaan.Username, &dtPerusahaan.Lokasi, &dtPerusahaan.Tipe,
 			&dtPerusahaan.Kelas,
 			&dtPerusahaan.Dokumen_kepemilikan, &dtPerusahaan.Dokumen_perusahaan, &dtPerusahaan.Modal,
-			&dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt, &usr.Id, &usr.Username, &usr.Nama_lengkap)
+			&dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt, &usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.UserRole)
 		if err != nil {
 			res.Status = 401
 			res.Message = "Failed to scan row"
@@ -540,9 +577,9 @@ func AddUserCompany(input string) (Response, error) {
 	var res Response
 
 	type UserCompany struct {
-		Id_user       string `user_id`
-		Id_perusahaan string `perusahaan_id`
-		Id_role       string `role_id`
+		Id_user       int `json:"user_id"`
+		Id_perusahaan int `json:"perusahaan_id"`
+		Id_role       int `json:"role_id"`
 	}
 	var tempUserCompany UserCompany
 	err := json.Unmarshal([]byte(input), &tempUserCompany)
@@ -563,7 +600,7 @@ func AddUserCompany(input string) (Response, error) {
 
 	// Check if id_user exists
 	var userExists bool
-	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE user_id = ?)", tempUserCompany.Id_user).Scan(&userExists)
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM user WHERE user_id = ?)", tempUserCompany.Id_user).Scan(&userExists)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal mengecek user"
@@ -595,7 +632,7 @@ func AddUserCompany(input string) (Response, error) {
 
 	// Check if id_role exists
 	var roleExists bool
-	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM roles WHERE role_id = ?)", tempUserCompany.Id_role).Scan(&roleExists)
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM role WHERE role_id = ?)", tempUserCompany.Id_role).Scan(&roleExists)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal mengecek role"
@@ -627,13 +664,80 @@ func AddUserCompany(input string) (Response, error) {
 		return res, err
 	}
 
+	tempUserid := strconv.Itoa(tempUserCompany.Id_user)
+	tempPerusahaanid := strconv.Itoa(tempUserCompany.Id_perusahaan)
+	tempRoleid := strconv.Itoa(tempUserCompany.Id_role)
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil memasukkan user ke perusahaan"
 	res.Data = map[string]string{
-		"id_user":       tempUserCompany.Id_user,
-		"id_perusahaan": tempUserCompany.Id_perusahaan,
-		"id_role":       tempUserCompany.Id_role,
+		"id_user":       tempUserid,
+		"id_perusahaan": tempPerusahaanid,
+		"id_role":       tempRoleid,
 	}
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllPerusahaanJoinedByUserId(user_id string) (Response, error) {
+	var res Response
+	var arrPerusahaan = []Perusahaan{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT p.perusahaan_id, p.name
+	FROM user_perusahaan up 
+	LEFT JOIN perusahaan p ON up.id_perusahaan = p.perusahaan_id
+	WHERE up.id_user = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query(user_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+
+	for result.Next() {
+		var dtPerusahaan Perusahaan
+		err = result.Scan(&dtPerusahaan.Id, &dtPerusahaan.Nama)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+		arrPerusahaan = append(arrPerusahaan, dtPerusahaan)
+	}
+
+	if len(arrPerusahaan) == 0 {
+		res.Status = 401
+		res.Message = "Data tidak ditemukan"
+		res.Data = "User tidak tergabung dalam perusahaan mana pun"
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrPerusahaan
 
 	defer db.DbClose(con)
 	return res, nil

@@ -16,17 +16,13 @@ import (
 )
 
 // CRUD survey_request ============================================================================
-func CreateSurveyReq(surveyreq string) (Response, error) {
+func CreateSurveyReq(surat *multipart.FileHeader, user_id, id_asset, dateline string) (Response, error) {
 	var res Response
 	var dtSurveyReq = SurveyRequest{}
 
-	err := json.Unmarshal([]byte(surveyreq), &dtSurveyReq)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
+	dtSurveyReq.User_id, _ = strconv.Atoi(user_id)
+	dtSurveyReq.Id_asset, _ = strconv.Atoi(id_asset)
+	dtSurveyReq.Dateline = dateline
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -60,9 +56,11 @@ func CreateSurveyReq(surveyreq string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
+	fmt.Println("ambil data tags dan usage")
 
 	// ambil data aset dan update bagian lama
-	var luas, nilai, kondisi, batas_koordinat string
+	var nilai, kondisi, batas_koordinat, titik_koordinat string
+	var luas float64
 	var tags []string
 	var usages []string
 
@@ -100,22 +98,68 @@ func CreateSurveyReq(surveyreq string) (Response, error) {
 		}
 		tags = append(tags, tag)
 	}
+	fmt.Println("update")
 
 	tagsString := strings.Join(tags, ", ")
 	usagesString := strings.Join(usages, ", ")
 
+	queryGETasset := "SELECT luas, nilai, kondisi, batas_koordinat, titik_koordinat FROM asset WHERE id_asset = ?"
+	err = con.QueryRow(queryGETasset, id_asset).Scan(&luas, &nilai, &kondisi, &batas_koordinat, &titik_koordinat)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	updateQuery := `
 		UPDATE survey_request 
-		SET usage_old = ?, luas_old = ?, nilai_old = ?, kondisi_old = ?, batas_koordinat_old = ?, tags_old = ? 
+		SET usage_old = ?, luas_old = ?, nilai_old = ?, kondisi_old = ?, batas_koordinat_old = ?, titik_koordinat_old = ?, tags_old = ? 
 		WHERE id_transaksi_jual_sewa = ?
 	`
-	_, err = con.Exec(updateQuery, usagesString, luas, nilai, kondisi, batas_koordinat, tagsString, lastId)
+
+	_, err = con.Exec(updateQuery, usagesString, luas, nilai, kondisi, batas_koordinat, titik_koordinat, tagsString, lastId)
+	if err != nil {
+		return res, err
+	}
+	fmt.Println("masukin file")
+	dtSurveyReq.Id_transaksi_jual_sewa = int(lastId)
+	dtSurveyReq.Status_request = "O"
+
+	nId := strconv.Itoa(int(lastId))
+	// masukin file
+	surat.Filename = nId + "_" + surat.Filename
+	pathFotoFile := "uploads/survey_req/surat/" + surat.Filename
+	//source
+	srcfoto, err := surat.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcfoto.Close()
+
+	// Destination
+	dstfoto, err := os.Create("uploads/survey_req/surat/" + surat.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstfoto, srcfoto); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstfoto.Close()
+
+	err = UpdateDataFotoPath("survey_request", "surat_penugasan", pathFotoFile, "id_transaksi_jual_sewa", int(lastId))
 	if err != nil {
 		return res, err
 	}
 
-	dtSurveyReq.Id_transaksi_jual_sewa = int(lastId)
-	dtSurveyReq.Status_request = "O"
 	res.Status = http.StatusOK
 	res.Message = "Berhasil memasukkan data"
 	res.Data = dtSurveyReq
@@ -129,8 +173,10 @@ func GetAllSurveyReq() (Response, error) {
 	type SurveyorAssignment struct {
 		Id_transaksi_jual_sewa int    `json:"id_transaksi_jual_sewa"`
 		User_id                int    `json:"user_id"`
+		User_nama              string `json:"nama_lengkap"`
 		Id_asset               int    `json:"id_asset"`
 		Created_at             string `json:"created_at"`
+		Surat_penugasan        string `json:"surat"`
 		Dateline               string `json:"dateline"`
 		Status_request         string `json:"status_request"`
 		Status_verifikasi      string `json:"status_verifikasi"`
@@ -150,9 +196,10 @@ func GetAllSurveyReq() (Response, error) {
 	}
 
 	query := `
-		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.status_request, sr.status_verifikasi, sr.dateline, a.nama, a.alamat, a.titik_koordinat 
+		SELECT sr.id_transaksi_jual_sewa, sr.user_id, u.nama_lengkap, sr.id_asset, sr.created_at, sr.surat_penugasan, sr.status_request, sr.status_verifikasi, sr.dateline, a.nama, a.alamat, a.titik_koordinat 
 		FROM survey_request sr
-		JOIN asset a ON sr.id_asset = a.id_asset
+		LEFT JOIN asset a ON sr.id_asset = a.id_asset
+		LEFT JOIN user u ON sr.user_id = u.user_id
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -172,7 +219,7 @@ func GetAllSurveyReq() (Response, error) {
 	}
 	defer result.Close()
 	for result.Next() {
-		err = result.Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
+		err = result.Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.User_nama, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at, &dtSurveyReq.Surat_penugasan,
 			&dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Dateline, &dtSurveyReq.Asset_nama, &dtSurveyReq.Asset_alamat, &dtSurveyReq.Asset_titikkoordinat)
 		if err != nil {
 			res.Status = 401
@@ -202,6 +249,7 @@ func GetAllSurveyReqDetailed() (Response, error) {
 		Nama_lengkap           string `json:"nama_lengkap"`
 		Status_request         string `json:"status_request"`
 		Status_verifikasi      string `json:"status_verifikasi"`
+		Surat_penugasan        string `json:"surat"`
 		Dateline               string `json:"dateline"`
 	}
 	var arrSurveyReq = []tempAllSurveyReqDetail{}
@@ -217,11 +265,12 @@ func GetAllSurveyReqDetailed() (Response, error) {
 	query := `
 		SELECT sr.id_transaksi_jual_sewa, sr.data_lengkap,a.nama,a.alamat,
 			s.suveyor_id,u.nama_lengkap,
-			sr.status_request,sr.status_verifikasi,sr.dateline
+			sr.status_request,sr.status_verifikasi,sr.surat_penugasan,sr.dateline
 		FROM survey_request sr
 		LEFT JOIN asset a ON sr.id_asset = a.id_asset
 		LEFT JOIN user u ON sr.user_id = u.user_id
 		LEFT JOIN surveyor s ON sr.user_id = s.user_id
+		WHERE sr.status_submitted = 'Y'
 		ORDER BY sr.dateline
 	`
 	stmt, err := con.Prepare(query)
@@ -246,7 +295,7 @@ func GetAllSurveyReqDetailed() (Response, error) {
 		err := rows.Scan(
 			&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.Data_lengkap, &dtSurveyReq.Nama_asset, &dtSurveyReq.Alamat,
 			&dtSurveyReq.Id_Surveyor, &dtSurveyReq.Nama_lengkap, &dtSurveyReq.Status_request,
-			&dtSurveyReq.Status_verifikasi, &dtSurveyReq.Dateline,
+			&dtSurveyReq.Status_verifikasi, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Dateline,
 		)
 		if err != nil {
 			res.Status = 401
@@ -278,12 +327,19 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
 		return res, err
 	}
 
+	// Modify the query to include usage_old, usage_new
 	query := `
-	SELECT sr.*,a.nama,a.alamat,a.tipe
+	SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.dateline,
+       sr.surat_penugasan, sr.status_request, sr.status_verifikasi, sr.data_lengkap, 
+       sr.usage_old, sr.usage_new, sr.luas_old, sr.luas_new, sr.nilai_old, sr.nilai_new,
+       sr.kondisi_old, sr.kondisi_new, sr.titik_koordinat_old, sr.titik_koordinat_new, 
+       sr.batas_koordinat_old, sr.batas_koordinat_new, sr.tags_old, sr.tags_new, 
+       a.nama, a.alamat, a.tipe
 	FROM survey_request sr
-	JOIN asset a ON sr.id_asset = a.id_asset 
+	LEFT JOIN asset a ON sr.id_asset = a.id_asset
 	WHERE sr.id_transaksi_jual_sewa = ?
 	`
+
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -292,13 +348,73 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
 		return res, err
 	}
 	defer stmt.Close()
+
+	// Define sql.NullString to handle NULL values from the database
+	var usageOld, usageNew, tagsOld, tagsNew sql.NullString
 	nId, _ := strconv.Atoi(surveyreq_id)
-	err = stmt.QueryRow(nId).Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at, &dtSurveyReq.Dateline, &dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Data_lengkap, &dtSurveyReq.Usage_old, &dtSurveyReq.Usage_new, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new, &dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new, &dtSurveyReq.Titik_koordinat_old, &dtSurveyReq.Titik_koordinat_new, &dtSurveyReq.Batas_koordinat_old, &dtSurveyReq.Batas_koordinat_new, &dtSurveyReq.Tags_old, &dtSurveyReq.Tags_new, &dtSurveyReq.Nama_asset, &dtSurveyReq.Lokasi_asset, &dtSurveyReq.Tipe_asset)
+	err = stmt.QueryRow(nId).Scan(
+		&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
+		&dtSurveyReq.Dateline, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi,
+		&dtSurveyReq.Data_lengkap, &usageOld, &usageNew, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new,
+		&dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new,
+		&dtSurveyReq.Titik_koordinat_old, &dtSurveyReq.Titik_koordinat_new, &dtSurveyReq.Batas_koordinat_old,
+		&dtSurveyReq.Batas_koordinat_new, &tagsOld, &tagsNew, &dtSurveyReq.Nama_asset, &dtSurveyReq.Lokasi_asset, &dtSurveyReq.Tipe_asset)
+
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
 		return res, err
+	}
+
+	// Fetch names for old and new usage
+	if usageOld.Valid {
+		dtSurveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
+		if err != nil {
+			res.Status = 401
+			res.Message = fmt.Sprintf("Error fetching Usage_old: %v", err)
+			res.Data = nil
+			return res, err
+		}
+	} else {
+		dtSurveyReq.Usage_old = []Kegunaan{}
+	}
+
+	if usageNew.Valid {
+		dtSurveyReq.Usage_new, err = fetchUsageNames(con, usageNew.String)
+		if err != nil {
+			res.Status = 401
+			res.Message = fmt.Sprintf("Error fetching Usage_new: %v", err)
+			res.Data = nil
+			return res, err
+		}
+	} else {
+		dtSurveyReq.Usage_new = []Kegunaan{}
+	}
+
+	// Fetch names for old and new tags
+	if tagsOld.Valid {
+		dtSurveyReq.Tags_old, err = fetchTagNames(con, tagsOld.String)
+		if err != nil {
+			res.Status = 401
+			res.Message = fmt.Sprintf("Error fetching Tags_old: %v", err)
+			res.Data = nil
+			return res, err
+		}
+	} else {
+		dtSurveyReq.Tags_old = []Tags{}
+	}
+
+	if tagsNew.Valid {
+		dtSurveyReq.Tags_new, err = fetchTagNames(con, tagsNew.String)
+		if err != nil {
+			res.Status = 401
+			res.Message = fmt.Sprintf("Error fetching Tags_new: %v", err)
+			res.Data = nil
+			return res, err
+		}
+	} else {
+		dtSurveyReq.Tags_new = []Tags{}
 	}
 
 	res.Status = http.StatusOK
@@ -307,6 +423,70 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
 
 	defer db.DbClose(con)
 	return res, nil
+}
+
+func fetchUsageNames(con *sql.DB, usageIds string) ([]Kegunaan, error) {
+	if strings.TrimSpace(usageIds) == "" {
+		return []Kegunaan{}, nil
+	}
+
+	idList := strings.Split(usageIds, ",")
+	var kegunaan []Kegunaan
+
+	query := `
+		SELECT id, nama
+		FROM penggunaan
+		WHERE id IN (` + strings.Join(idList, ",") + `)
+	`
+
+	rows, err := con.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var usage Kegunaan
+		if err := rows.Scan(&usage.Id, &usage.Nama); err != nil {
+			return nil, err
+		}
+		kegunaan = append(kegunaan, usage)
+	}
+
+	return kegunaan, nil
+}
+
+func fetchTagNames(con *sql.DB, tagIds string) ([]Tags, error) {
+	if strings.TrimSpace(tagIds) == "" {
+		return []Tags{}, nil
+	}
+
+	// Split the comma-separated string of tag IDs
+	idList := strings.Split(tagIds, ",")
+	var tags []Tags
+
+	// Query to fetch names for the tag IDs
+	query := `
+		SELECT id, nama
+		FROM tags
+		WHERE id IN (` + strings.Join(idList, ",") + `)
+	`
+
+	rows, err := con.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tag Tags
+		if err := rows.Scan(&tag.Id, &tag.Nama); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+
+	return tags, nil
 }
 
 func GetSurveyReqByAsetId(aset_id string) (Response, error) {
@@ -322,9 +502,14 @@ func GetSurveyReqByAsetId(aset_id string) (Response, error) {
 	}
 
 	query := `
-	SELECT sr.*,a.nama 
+	SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.dateline,
+       sr.surat_penugasan, sr.status_request, sr.status_verifikasi, sr.data_lengkap, 
+       sr.usage_old, sr.usage_new, sr.luas_old, sr.luas_new, sr.nilai_old, sr.nilai_new,
+       sr.kondisi_old, sr.kondisi_new, sr.titik_koordinat_old, sr.titik_koordinat_new, 
+       sr.batas_koordinat_old, sr.batas_koordinat_new, sr.tags_old, sr.tags_new, 
+       a.nama, a.alamat, a.tipe
 	FROM survey_request sr
-	JOIN asset a ON sr.id_asset = a.id_asset 
+	LEFT JOIN asset a ON sr.id_asset = a.id_asset
 	WHERE sr.id_asset = ?
 	`
 	stmt, err := con.Prepare(query)
@@ -335,13 +520,73 @@ func GetSurveyReqByAsetId(aset_id string) (Response, error) {
 		return res, err
 	}
 	defer stmt.Close()
+
+	// Define sql.NullString to handle NULL values from the database
+	var usageOld, usageNew, tagsOld, tagsNew sql.NullString
 	nId, _ := strconv.Atoi(aset_id)
-	err = stmt.QueryRow(nId).Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at, &dtSurveyReq.Dateline, &dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Data_lengkap, &dtSurveyReq.Usage_old, &dtSurveyReq.Usage_new, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new, &dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new, &dtSurveyReq.Batas_koordinat_old, &dtSurveyReq.Batas_koordinat_new, &dtSurveyReq.Tags_old, &dtSurveyReq.Tags_new, &dtSurveyReq.Nama_asset)
+	err = stmt.QueryRow(nId).Scan(
+		&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
+		&dtSurveyReq.Dateline, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi,
+		&dtSurveyReq.Data_lengkap, &usageOld, &usageNew, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new,
+		&dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new,
+		&dtSurveyReq.Titik_koordinat_old, &dtSurveyReq.Titik_koordinat_new, &dtSurveyReq.Batas_koordinat_old,
+		&dtSurveyReq.Batas_koordinat_new, &tagsOld, &tagsNew, &dtSurveyReq.Nama_asset, &dtSurveyReq.Lokasi_asset, &dtSurveyReq.Tipe_asset)
+
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
 		return res, err
+	}
+
+	// Fetch names for old and new usage
+	if usageOld.Valid {
+		dtSurveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
+		if err != nil {
+			res.Status = 401
+			res.Message = fmt.Sprintf("Error fetching Usage_old: %v", err)
+			res.Data = nil
+			return res, err
+		}
+	} else {
+		dtSurveyReq.Usage_old = []Kegunaan{}
+	}
+
+	if usageNew.Valid {
+		dtSurveyReq.Usage_new, err = fetchUsageNames(con, usageNew.String)
+		if err != nil {
+			res.Status = 401
+			res.Message = fmt.Sprintf("Error fetching Usage_new: %v", err)
+			res.Data = nil
+			return res, err
+		}
+	} else {
+		dtSurveyReq.Usage_new = []Kegunaan{}
+	}
+
+	// Fetch names for old and new tags
+	if tagsOld.Valid {
+		dtSurveyReq.Tags_old, err = fetchTagNames(con, tagsOld.String)
+		if err != nil {
+			res.Status = 401
+			res.Message = fmt.Sprintf("Error fetching Tags_old: %v", err)
+			res.Data = nil
+			return res, err
+		}
+	} else {
+		dtSurveyReq.Tags_old = []Tags{}
+	}
+
+	if tagsNew.Valid {
+		dtSurveyReq.Tags_new, err = fetchTagNames(con, tagsNew.String)
+		if err != nil {
+			res.Status = 401
+			res.Message = fmt.Sprintf("Error fetching Tags_new: %v", err)
+			res.Data = nil
+			return res, err
+		}
+	} else {
+		dtSurveyReq.Tags_new = []Tags{}
 	}
 
 	res.Status = http.StatusOK
@@ -425,6 +670,7 @@ func GetAllSurveyReqByUserId(user_id string) (Response, error) {
 		User_id                int    `json:"user_id"`
 		Id_asset               int    `json:"id_asset"`
 		Created_at             string `json:"created_at"`
+		Surat_penugasan        string `json:"surat_penugasan"`
 		Dateline               string `json:"dateline"`
 		Status_request         string `json:"status_request"`
 		Status_verifikasi      string `json:"status_verifikasi"`
@@ -448,7 +694,7 @@ func GetAllSurveyReqByUserId(user_id string) (Response, error) {
 	}
 
 	query := `
-		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.status_request, sr.status_verifikasi, sr.dateline, a.nama, a.alamat, a.titik_koordinat 
+		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.status_request, sr.status_verifikasi, sr.surat_penugasan, sr.dateline, a.nama, a.alamat, a.titik_koordinat 
 		FROM survey_request sr
 		JOIN asset a ON sr.id_asset = a.id_asset
 		WHERE sr.user_id = ? AND (sr.status_request = 'O' OR sr.status_request = 'R')
@@ -473,7 +719,7 @@ func GetAllSurveyReqByUserId(user_id string) (Response, error) {
 	defer result.Close()
 	for result.Next() {
 		err = result.Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
-			&dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Dateline, &dtSurveyReq.Asset_nama, &dtSurveyReq.Asset_alamat, &dtSurveyReq.Asset_titikkoordinat)
+			&dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Dateline, &dtSurveyReq.Asset_nama, &dtSurveyReq.Asset_alamat, &dtSurveyReq.Asset_titikkoordinat)
 		if err != nil {
 			res.Status = 401
 			res.Message = "rows scan"
@@ -489,7 +735,7 @@ func GetAllSurveyReqByUserId(user_id string) (Response, error) {
 	var arrSurveyReqFinished = []SurveyorAssignment{}
 	var dtSurveyReqFinished SurveyorAssignment
 	queryfinished := `
-		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.status_request, sr.status_verifikasi, sr.dateline, a.nama, a.alamat, a.titik_koordinat 
+		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.status_request, sr.status_verifikasi, sr.surat_penugasan, sr.dateline, a.nama, a.alamat, a.titik_koordinat 
 		FROM survey_request sr
 		JOIN asset a ON sr.id_asset = a.id_asset
 		WHERE sr.user_id = ? AND sr.status_request = 'F'
@@ -513,7 +759,7 @@ func GetAllSurveyReqByUserId(user_id string) (Response, error) {
 	defer resultfinished.Close()
 	for resultfinished.Next() {
 		err = resultfinished.Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
-			&dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Dateline, &dtSurveyReq.Asset_nama, &dtSurveyReq.Asset_alamat, &dtSurveyReq.Asset_titikkoordinat)
+			&dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Dateline, &dtSurveyReq.Asset_nama, &dtSurveyReq.Asset_alamat, &dtSurveyReq.Asset_titikkoordinat)
 		if err != nil {
 			res.Status = 401
 			res.Message = "rows scan"
@@ -794,10 +1040,17 @@ func SubmitSurveyReqById(surveyreq string) (Response, error) {
 		tempsubmitsurveyreq.Nilai > 0 && tempsubmitsurveyreq.Kondisi != "" &&
 		tempsubmitsurveyreq.Titik_koordinat != "" && tempsubmitsurveyreq.Batas_koordinat != "" &&
 		tempsubmitsurveyreq.Tags != "" {
-		datalengkap = "N"
-	} else {
 		datalengkap = "Y"
+	} else {
+		datalengkap = "N"
 	}
+	fmt.Println("usage", tempsubmitsurveyreq.Usage)
+	fmt.Println("Luas", tempsubmitsurveyreq.Luas)
+	fmt.Println("Nilai", tempsubmitsurveyreq.Nilai)
+	fmt.Println("Kondisi", tempsubmitsurveyreq.Kondisi)
+	fmt.Println("Titik_koordinat", tempsubmitsurveyreq.Titik_koordinat)
+	fmt.Println("Batas_koordinat", tempsubmitsurveyreq.Batas_koordinat)
+	fmt.Println("Tags", tempsubmitsurveyreq.Tags)
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -807,7 +1060,7 @@ func SubmitSurveyReqById(surveyreq string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE survey_request SET `usage_new` = ?, luas_new = ?, nilai_new = ?, kondisi_new = ?, titik_koordinat_new = ?, batas_koordinat_new = ?, tags_new = ?,data_lengkap = ? WHERE id_transaksi_jual_sewa = ?"
+	query := "UPDATE survey_request SET `usage_new` = ?, luas_new = ?, nilai_new = ?, kondisi_new = ?, titik_koordinat_new = ?, batas_koordinat_new = ?, tags_new = ?,data_lengkap = ?,status_submitted='Y' WHERE id_transaksi_jual_sewa = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -828,6 +1081,8 @@ func SubmitSurveyReqById(surveyreq string) (Response, error) {
 		datalengkap,
 		tempsubmitsurveyreq.Id,
 	)
+
+	fmt.Println("datalengkap:", datalengkap)
 	if err != nil {
 		res.Status = 401
 		res.Message = "Failed to execute statement"
@@ -856,6 +1111,12 @@ func SubmitSurveyReqById(surveyreq string) (Response, error) {
 	res.Data = result
 
 	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetSurveyReqHistoryByUserId(user_id string) (Response, error) {
+	var res Response
+
 	return res, nil
 }
 

@@ -2,8 +2,12 @@ package model
 
 import (
 	"TemplateProject/db"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -318,6 +322,7 @@ func CreateRole(userRole string) (Response, error) {
 	type InputRole struct {
 		Role_name  string `json:"role"`
 		Privileges string `json:"privilege"`
+		Admin_role string `json:"admin_role"`
 	}
 	var dtUserRole InputRole
 	err := json.Unmarshal([]byte(userRole), &dtUserRole)
@@ -336,7 +341,7 @@ func CreateRole(userRole string) (Response, error) {
 		return res, err
 	}
 
-	query := "INSERT INTO role (nama_role) VALUES (?)"
+	query := "INSERT INTO role (nama_role,admin_role) VALUES (?,?)"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -346,7 +351,7 @@ func CreateRole(userRole string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtUserRole.Role_name)
+	result, err := stmt.Exec(dtUserRole.Role_name, dtUserRole.Admin_role)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -362,7 +367,7 @@ func CreateRole(userRole string) (Response, error) {
 	}
 
 	privileges := strings.Split(dtUserRole.Privileges, ",")
-	insertPrivilegeQuery := "INSERT INTO role_privilege (id_role, id_privilege) VALUES (?, ?)"
+	insertPrivilegeQuery := "INSERT INTO role_privilege_user (id_role, id_privilege) VALUES (?, ?)"
 
 	for _, privilege := range privileges {
 		privilegeId := strings.TrimSpace(privilege)
@@ -401,9 +406,10 @@ func EditRole(userRole string) (Response, error) {
 	var res Response
 
 	type InputRole struct {
-		// id role bukan role_privilege
-		Id_role    string `json:"id"`
+		// id role bukan role_privilege_user
+		Id_role    int    `json:"id"`
 		Role_name  string `json:"role"`
+		Admin_role string `json:"admin_role"`
 		Privileges string `json:"privilege"`
 	}
 	var dtUserRole InputRole
@@ -414,6 +420,9 @@ func EditRole(userRole string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
+	fmt.Println(dtUserRole.Id_role)
+	fmt.Println(dtUserRole.Role_name)
+	fmt.Println(dtUserRole.Privileges)
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -423,7 +432,7 @@ func EditRole(userRole string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE role SET nama_role=? WHERE role_id = ?"
+	query := "UPDATE role SET `nama_role`=?,`admin_role`=? WHERE `role_id` = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -433,7 +442,7 @@ func EditRole(userRole string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(dtUserRole.Role_name, dtUserRole.Id_role)
+	_, err = stmt.Exec(dtUserRole.Role_name, dtUserRole.Admin_role, dtUserRole.Id_role)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -441,30 +450,30 @@ func EditRole(userRole string) (Response, error) {
 		return res, err
 	}
 
-	deletePrivilegesQuery := "DELETE FROM role_privilege WHERE id_role = ?"
-	stmt, err = con.Prepare(deletePrivilegesQuery)
+	deletePrivilegesQuery := "DELETE FROM role_privilege_user WHERE `id_role` = ?"
+	deletestmt, err := con.Prepare(deletePrivilegesQuery)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt delete gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	_, err = stmt.Exec(dtUserRole.Id_role)
+	_, err = deletestmt.Exec(dtUserRole.Id_role)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec delete privilege gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	stmt.Close()
+	deletestmt.Close()
 
 	privileges := strings.Split(dtUserRole.Privileges, ",")
-	insertPrivilegeQuery := "INSERT INTO role_privilege (id_role, id_privilege) VALUES (?, ?)"
+	insertPrivilegeQuery := "INSERT INTO role_privilege_user (id_role, id_privilege) VALUES (?, ?)"
 
 	for _, privilege := range privileges {
 		privilegeId := strings.TrimSpace(privilege)
 
-		stmt, err := con.Prepare(insertPrivilegeQuery)
+		privstmt, err := con.Prepare(insertPrivilegeQuery)
 		if err != nil {
 			res.Status = 401
 			res.Message = "stmt privilege gagal"
@@ -472,8 +481,8 @@ func EditRole(userRole string) (Response, error) {
 			return res, err
 		}
 
-		_, err = stmt.Exec(dtUserRole.Id_role, privilegeId)
-		stmt.Close()
+		_, err = privstmt.Exec(dtUserRole.Id_role, privilegeId)
+		privstmt.Close()
 		if err != nil {
 			res.Status = 401
 			res.Message = "exec privilege gagal"
@@ -498,6 +507,149 @@ func GetAllRole() (Response, error) {
 	var res Response
 	var arrRole = []Role{}
 
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT role_id,nama_role
+	FROM role
+	`
+
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+
+	// Iterate over the results and populate the roleMap
+	for result.Next() {
+		var dtRole Role
+
+		err = result.Scan(&dtRole.Role_id, &dtRole.Nama_role)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		arrRole = append(arrRole, dtRole)
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrRole
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllRoleAdmin() (Response, error) {
+	var res Response
+	var arrRole = []Role{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// Modify the query to join role, role_privilege_user, and privilege tables
+	query := `
+	SELECT r.role_id, r.nama_role, p.nama_privilege
+	FROM role r
+	LEFT JOIN role_privilege_user rp ON r.role_id = rp.id_role
+	LEFT JOIN privilege p ON rp.id_privilege = p.privilege_id
+	WHERE r.admin_role = 'Y'
+	ORDER BY r.role_id ASC
+	`
+
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+
+	roleMap := make(map[int]Role)
+	var roleIds []int
+
+	for result.Next() {
+		var roleId int
+		var namaRole, namaPrivilege sql.NullString
+
+		err = result.Scan(&roleId, &namaRole, &namaPrivilege)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Rows scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		role, exists := roleMap[roleId]
+		if !exists {
+			role = Role{
+				Role_id:   roleId,
+				Nama_role: namaRole.String,
+			}
+			roleMap[roleId] = role
+			roleIds = append(roleIds, roleId)
+		}
+
+		if namaPrivilege.Valid {
+			role.Privilege = append(role.Privilege, namaPrivilege.String)
+			roleMap[roleId] = role
+		}
+	}
+
+	sort.Ints(roleIds)
+
+	for _, id := range roleIds {
+		arrRole = append(arrRole, roleMap[id])
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrRole
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllPrivRole() (Response, error) {
+	var res Response
+	var arrRole = []Role{}
+
 	// Map to track roles and their associated privileges
 	roleMap := make(map[int]*Role)
 
@@ -510,10 +662,10 @@ func GetAllRole() (Response, error) {
 	}
 
 	query := `
-	SELECT r.role_id, r.nama_role, p.nama_privilege
-	FROM role_privilege rp
+	SELECT r.role_id, r.nama_role, IFNULL(p.nama_privilege,"")
+	FROM role r
+	LEFT JOIN role_privilege_user rp ON r.role_id = rp.id_role
 	LEFT JOIN privilege p ON rp.id_privilege = p.privilege_id
-	LEFT JOIN role r ON rp.id_role = r.role_id
 	ORDER BY r.role_id
 	`
 
@@ -559,12 +711,18 @@ func GetAllRole() (Response, error) {
 		}
 
 		// Append the privilege to the role's Privileges list
-		roleMap[roleId].Privilege = append(roleMap[roleId].Privilege, privilege)
+		if privilege != "" {
+			roleMap[roleId].Privilege = append(roleMap[roleId].Privilege, privilege)
+		}
 	}
 
-	// Convert the map to a slice for the response
-	for _, role := range roleMap {
-		arrRole = append(arrRole, *role)
+	var roleIds []int
+	for roleId := range roleMap {
+		roleIds = append(roleIds, roleId)
+	}
+	sort.Ints(roleIds)
+	for _, roleId := range roleIds {
+		arrRole = append(arrRole, *roleMap[roleId])
 	}
 
 	// Prepare the response
@@ -576,9 +734,15 @@ func GetAllRole() (Response, error) {
 	return res, nil
 }
 
-func GetRoleById(role_id string) (Response, error) {
+func GetPrivRoleById(role_id string) (Response, error) {
 	var res Response
-	var dtRole Role
+	type TempRole struct {
+		Role_id   int    `json:"role_id"`
+		Nama_role string `json:"nama_role"`
+		Privilege []int  `json:"privilege"`
+	}
+	var dtRole TempRole
+	var privileges []int
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -588,7 +752,14 @@ func GetRoleById(role_id string) (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT * FROM role WHERE role_id = ?"
+	query := `
+	SELECT r.role_id, r.nama_role, IFNULL(p.privilege_id,0)
+	FROM role r
+	LEFT JOIN role_privilege_user rp ON r.role_id = rp.id_role
+	LEFT JOIN privilege p ON rp.id_privilege = p.privilege_id
+	WHERE r.role_id = ?
+	ORDER BY r.role_id
+	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -597,14 +768,38 @@ func GetRoleById(role_id string) (Response, error) {
 		return res, err
 	}
 	defer stmt.Close()
-	nId, _ := strconv.Atoi(role_id)
-	err = stmt.QueryRow(nId).Scan(&dtRole.Role_id, &dtRole.Nama_role)
+
+	rows, err := stmt.Query(role_id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
 		return res, err
 	}
+	defer rows.Close()
+
+	// Variables to hold row data
+	var privilegeId int
+	isFirstRow := true
+
+	for rows.Next() {
+		err := rows.Scan(&dtRole.Role_id, &dtRole.Nama_role, &privilegeId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal scan data"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		if isFirstRow {
+			isFirstRow = false
+		}
+
+		if privilegeId != 0 {
+			privileges = append(privileges, privilegeId)
+		}
+	}
+	dtRole.Privilege = privileges
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
@@ -614,9 +809,10 @@ func GetRoleById(role_id string) (Response, error) {
 	return res, nil
 }
 
-func GetRoleByName(nama_role string) (Response, error) {
+func GetUserRoleByPerusahaanId(perusahaan_id, user_id int) (Response, error) {
 	var res Response
-	var dtRoles = []Role{}
+	var dtRole Role
+	var privileges []string
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -626,7 +822,15 @@ func GetRoleByName(nama_role string) (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT * FROM role WHERE nama_role LIKE ?"
+	query := `
+	SELECT r.role_id, r.nama_role, IFNULL(rp.id_privilege,"")
+	FROM user_perusahaan up
+	LEFT JOIN role r ON up.id_role = r.role_id
+	LEFT JOIN role_privilege_user rp ON r.role_id = rp.id_role
+	LEFT JOIN privilege p ON rp.id_privilege = p.privilege_id
+	WHERE up.id_perusahaan = ? AND up.id_user = ?
+	`
+
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -636,7 +840,7 @@ func GetRoleByName(nama_role string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query("%" + nama_role + "%")
+	rows, err := stmt.Query(perusahaan_id, user_id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -644,59 +848,68 @@ func GetRoleByName(nama_role string) (Response, error) {
 		return res, err
 	}
 	defer rows.Close()
+
+	// Variables to hold row data
+	var privilegeId string
+	isFirstRow := true
+
 	for rows.Next() {
-		var dtRole Role
-		err := rows.Scan(&dtRole.Role_id, &dtRole.Nama_role)
+		err := rows.Scan(&dtRole.Role_id, &dtRole.Nama_role, &privilegeId)
 		if err != nil {
 			res.Status = 401
-			res.Message = "scan gagal"
+			res.Message = "gagal scan data"
 			res.Data = err.Error()
 			return res, err
 		}
-		dtRoles = append(dtRoles, dtRole)
-	}
 
-	if err = rows.Err(); err != nil {
-		res.Status = 401
-		res.Message = "rows error"
-		res.Data = err.Error()
-		return res, err
-	}
+		if isFirstRow {
+			isFirstRow = false
+		}
 
-	if len(dtRoles) == 0 {
-		res.Status = 404
-		res.Message = "Data tidak ditemukan"
-		res.Data = nil
-		return res, nil
+		if privilegeId != "" {
+			privileges = append(privileges, privilegeId)
+		}
 	}
+	dtRole.Privilege = privileges
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
-	res.Data = dtRoles
+	res.Data = dtRole
 
 	defer db.DbClose(con)
 	return res, nil
 }
 
-func DeleteRoleById(peran string) (Response, error) {
+func DeleteRoleById(id string) (Response, error) {
 	var res Response
-
-	var dtRole = Role{}
-
-	err := json.Unmarshal([]byte(peran), &dtRole)
-	if err != nil {
-		res.Status = 401
-		res.Message = "gagal decode json"
-		res.Data = err.Error()
-		return res, err
-	}
-
 	con, err := db.DbConnection()
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal membuka database"
 		res.Data = err.Error()
 		return res, err
+	}
+
+	checkAdminQuery := `
+	SELECT role_id
+	FROM user_role
+	WHERE role_id = ?
+	`
+	var roleID string
+	err = con.QueryRow(checkAdminQuery, id).Scan(&roleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+		} else {
+			res.Status = 401
+			res.Message = "Gagal memeriksa role user"
+			res.Data = err.Error()
+			return res, err
+		}
+	} else {
+		res.Status = 403
+		res.Message = "Role masih terpakai di user lain"
+		res.Data = nil
+		return res, errors.New(res.Message)
 	}
 
 	query := "DELETE FROM role WHERE role_id = ?"
@@ -709,7 +922,7 @@ func DeleteRoleById(peran string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtRole.Role_id)
+	result, err := stmt.Exec(id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"

@@ -738,12 +738,62 @@ func GetSurveyorByUserId(user_id string) (Response, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var _surveyReq SurveyRequest
-		err := rows.Scan(&_surveyReq.Id_transaksi_jual_sewa, &_surveyReq.User_id, &_surveyReq.Id_asset, &_surveyReq.Created_at, &_surveyReq.Dateline, &_surveyReq.Status_request, &_surveyReq.Status_verifikasi, &_surveyReq.Data_lengkap, &_surveyReq.Usage_old, &_surveyReq.Usage_new, &_surveyReq.Luas_old, &_surveyReq.Luas_new, &_surveyReq.Nilai_old, &_surveyReq.Nilai_new, &_surveyReq.Kondisi_old, &_surveyReq.Kondisi_new, &_surveyReq.Titik_koordinat_old, &_surveyReq.Titik_koordinat_new, &_surveyReq.Batas_koordinat_old, &_surveyReq.Batas_koordinat_new, &_surveyReq.Tags_old, &_surveyReq.Tags_new)
+		var usageOld, usageNew, tagsOld, tagsNew sql.NullString
+		err := rows.Scan(&_surveyReq.Id_transaksi_jual_sewa, &_surveyReq.User_id, &_surveyReq.Id_asset, &_surveyReq.Created_at, &_surveyReq.Surat_penugasan, &_surveyReq.Dateline, &_surveyReq.Status_request, &_surveyReq.Status_verifikasi, &_surveyReq.Status_submitted, &_surveyReq.Data_lengkap, &usageOld, &usageNew, &_surveyReq.Luas_old, &_surveyReq.Luas_new, &_surveyReq.Nilai_old, &_surveyReq.Nilai_new, &_surveyReq.Kondisi_old, &_surveyReq.Kondisi_new, &_surveyReq.Titik_koordinat_old, &_surveyReq.Titik_koordinat_new, &_surveyReq.Batas_koordinat_old, &_surveyReq.Batas_koordinat_new, &tagsOld, &tagsNew)
 		if err != nil {
 			res.Status = 401
 			res.Message = "scan gagal"
 			res.Data = err.Error()
 			return res, err
+		}
+
+		if usageOld.Valid {
+			_surveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			_surveyReq.Usage_old = []Kegunaan{}
+		}
+
+		if usageNew.Valid {
+			_surveyReq.Usage_new, err = fetchUsageNames(con, usageNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			_surveyReq.Usage_new = []Kegunaan{}
+		}
+
+		// Fetch names for old and new tags
+		if tagsOld.Valid {
+			_surveyReq.Tags_old, err = fetchTagNames(con, tagsOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			_surveyReq.Tags_old = []Tags{}
+		}
+
+		if tagsNew.Valid {
+			_surveyReq.Tags_new, err = fetchTagNames(con, tagsNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			_surveyReq.Tags_new = []Tags{}
 		}
 
 		dtSurveyor.Survey_Request = append(dtSurveyor.Survey_Request, _surveyReq)

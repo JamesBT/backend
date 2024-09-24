@@ -397,11 +397,77 @@ func AddUserCompany(c echo.Context) error {
 }
 
 func AddAdmin(c echo.Context) error {
+	nama := c.FormValue("nama")
+	username := c.FormValue("username")
+	password := c.FormValue("password")
+	email := c.FormValue("email")
+	no_telp := c.FormValue("no_telp")
+	role := c.FormValue("role")
+	foto_profil, err := c.FormFile("foto_profil")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.AddAdmin(foto_profil, username, password, nama, email, no_telp, role)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllAdmin(c echo.Context) error {
+	result, err := model.GetAllAdmin()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAdminById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAdminById(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UpdateAdminRoleById(c echo.Context) error {
 	input, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
-	result, err := model.AddAdmin(string(input))
+	result, err := model.UpdateAdminRoleById(string(input))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UpdateAdminById(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.UpdateAdminById(string(input))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func DeleteAdminById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.DeleteAdmin(id)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -525,11 +591,14 @@ func UpdateSurveyorByUserId(c echo.Context) error {
 
 // survey_request
 func CreateSurveyReq(c echo.Context) error {
-	surveyreq, err := io.ReadAll(c.Request().Body)
+	idAsset := c.FormValue("idAsset")
+	idUser := c.FormValue("idUser")
+	dateline := c.FormValue("dateline")
+	surat, err := c.FormFile("surat")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
-	result, err := model.CreateSurveyReq(string(surveyreq))
+	result, err := model.CreateSurveyReq(surat, idUser, idAsset, dateline)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -1003,7 +1072,7 @@ func EditRole(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
-	result, err := model.CreateRole(string(input))
+	result, err := model.EditRole(string(input))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 	}
@@ -1014,6 +1083,81 @@ func EditRole(c echo.Context) error {
 
 func GetAllRole(c echo.Context) error {
 	result, err := model.GetAllRole()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func DeleteRoleById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.DeleteRoleById(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func DeleteKelasById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.DeleteKelasById(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllRoleAdmin(c echo.Context) error {
+	result, err := model.GetAllRoleAdmin()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllPrivRole(c echo.Context) error {
+	result, err := model.GetAllPrivRole()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetPrivRoleById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetPrivRoleById(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllPrivilege(c echo.Context) error {
+	result, err := model.GetAllPrivilege()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetUserRoleByPerusahaanId(c echo.Context) error {
+	id_perusahaan, _ := strconv.Atoi(c.Param("id_perusahaan"))
+	id_user, _ := strconv.Atoi(c.Param("id_user"))
+	result, err := model.GetUserRoleByPerusahaanId(id_perusahaan, id_user)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 	}
@@ -1043,6 +1187,17 @@ func UpdateKelas(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
 	result, err := model.UpdateKelas(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetKelasById(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetKelasById(id)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 	}
@@ -1170,19 +1325,19 @@ func VerifyAssetAccept(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-func VerifyAssetReassign(c echo.Context) error {
-	input, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
-	}
-	result, err := model.ReassignAsset(string(input))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
-	}
-	ip := c.RealIP()
-	model.InsertLog(ip, "UploadFoto", result.Data, 3)
-	return c.JSON(http.StatusOK, result)
-}
+// func VerifyAssetReassign(c echo.Context) error {
+// 	input, err := io.ReadAll(c.Request().Body)
+// 	if err != nil {
+// 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+// 	}
+// 	result, err := model.ReassignAsset(string(input))
+// 	if err != nil {
+// 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+// 	}
+// 	ip := c.RealIP()
+// 	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+// 	return c.JSON(http.StatusOK, result)
+// }
 
 func VerifyOTP(c echo.Context) error {
 	input, err := io.ReadAll(c.Request().Body)

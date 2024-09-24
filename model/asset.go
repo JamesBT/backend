@@ -1169,7 +1169,12 @@ func GetAssetDetailedByPerusahaanId(perusahaan_id string) (Response, error) {
 func fetchAssetsByPerusahaanId(con *sql.DB, perusahaan_id string) ([]Asset, error) {
 	var assets []Asset
 
-	query := "SELECT * FROM asset WHERE perusahaan_id = ?"
+	query := `
+	SELECT a.* 
+	FROM transaction_request tr
+	LEFT JOIN asset a ON tr.id_asset = a.id_asset
+	WHERE tr.perusahaan_id = ?
+	`
 	rows, err := con.Query(query, perusahaan_id)
 	if err != nil {
 		return nil, err
@@ -1357,11 +1362,12 @@ func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
 
 	for _, perusahaanId := range perusahaanIds {
 		query := `
-			SELECT *
-			FROM asset 
-			WHERE perusahaan_id = ?
+		SELECT a.* 
+		FROM transaction_request tr
+		LEFT JOIN asset a ON tr.id_asset = a.id_asset
+		WHERE tr.perusahaan_id = ?
 		`
-
+		fmt.Println(perusahaanId)
 		rowsAssets, err := con.Query(query, perusahaanId)
 		if err != nil {
 			return nil, err
@@ -1465,7 +1471,7 @@ func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
 			}
 
 			// Fetch tags
-			tagQuery := `SELECT t.nama FROM asset_tags at
+			tagQuery := `SELECT t.id,t.nama FROM asset_tags at
 				JOIN tags t ON at.id_tags = t.id
 				WHERE at.id_asset = ?`
 			tagRows, err := con.Query(tagQuery, dtAset.Id_asset)
@@ -2440,7 +2446,7 @@ func FilterAsset(input string) (Response, error) {
 		return res, err
 	}
 
-	query := `SELECT * FROM asset WHERE 1=1`
+	query := `SELECT * FROM asset WHERE deleted_at IS NULL`
 	params := []interface{}{}
 	if tempInput.Tipe != "" {
 		tipeList := strings.Split(tempInput.Tipe, ",")
@@ -2559,16 +2565,13 @@ func FilterAsset(input string) (Response, error) {
 		return res, err
 	}
 
-	if len(assets) == 0 {
-		res.Status = 404
-		res.Message = "Data tidak ditemukan"
-		res.Data = nil
-		return res, nil
-	}
-
 	res.Status = http.StatusOK
-	res.Message = "Berhasil memasukkan data"
-	res.Data = assets
+	res.Message = "Berhasil mengambil data asset berdasarkan filter"
+	if len(assets) == 0 {
+		res.Data = []Asset{}
+	} else {
+		res.Data = assets
+	}
 
 	defer db.DbClose(con)
 	return res, nil

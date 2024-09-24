@@ -33,10 +33,17 @@ func Init() *echo.Echo {
 	e.GET("/user/foto/:id", controler.GetUserKTP)
 	e.GET("/user/unverified", controler.GetAllUserUnverified)
 	e.POST("/user/perusahaan", controler.AddUserCompany)
-	e.POST("/user/admin", controler.AddAdmin)
 	e.GET("/user/perusahaan/:id", controler.GetAllUserByPerusahaanId)
 	e.GET("/user/perusahaan/joined/:id", controler.GetAllPerusahaanJoinedByUserId)
 	e.GET("/user/admin/management", controler.AdminUserManagement)
+
+	e.POST("/user/admin", controler.AddAdmin)
+	e.GET("/admin/role", controler.GetAllRoleAdmin)
+	e.GET("/admin", controler.GetAllAdmin)
+	e.GET("/admin/:id", controler.GetAdminById)
+	e.PUT("/admin/role", controler.UpdateAdminRoleById)
+	e.PUT("/admin", controler.UpdateAdminById)
+	e.DELETE("/admin/delete/:id", controler.DeleteAdminById)
 
 	e.GET("/asset", controler.GetAllAsset)
 	// e.GET("/asset/:nama", controler.GetAssetByName)
@@ -48,7 +55,7 @@ func Init() *echo.Echo {
 	e.POST("/asset/child", controler.TambahAssetChild)
 	e.GET("/asset/child/:id", controler.GetAssetChildByParentId)
 	e.GET("/asset/history/:id", controler.GetAssetSurveyHistoryByAssetId)
-	e.GET("/asset/filter", controler.FilterAsset)
+	e.POST("/asset/filter", controler.FilterAsset)
 	e.GET("/asset/detail/:id", controler.GetAssetDetailedById)
 	e.GET("/asset/detail/user/:id", controler.GetAssetDetailedByUserId)
 	e.GET("/asset/detail/perusahaan/:id", controler.GetAssetDetailedByPerusahaanId)
@@ -92,7 +99,7 @@ func Init() *echo.Echo {
 	e.PUT("/verify/perusahaan/accept", controler.VerifyPerusahaanAccept)
 	e.PUT("/verify/perusahaan/decline", controler.VerifyPerusahaanDecline)
 	e.PUT("/verify/asset/accept", controler.VerifyAssetAccept)
-	e.PUT("/verify/asset/reassign", controler.VerifyAssetReassign)
+	// e.PUT("/verify/asset/reassign", controler.VerifyAssetReassign)
 
 	e.POST("/proposal", controler.SendProposal)
 	e.POST("/tranreq", controler.CreateTranReq)
@@ -112,11 +119,21 @@ func Init() *echo.Echo {
 	e.GET("/notification/perusahaan/:id", controler.GetNotificationByPerusahaanIdReceiver)
 
 	e.GET("/role", controler.GetAllRole)
+	e.GET("/role/perusahaan/:id_perusahaan/:id_user", controler.GetUserRoleByPerusahaanId)
 	e.POST("/role", controler.CreateRole)
 	e.PUT("/role", controler.EditRole)
+	e.DELETE("/role/delete/:id", controler.DeleteRoleById)
+
+	e.GET("/priv", controler.GetAllPrivilege)
+
+	e.GET("/privrole", controler.GetAllPrivRole)
+	e.GET("/privrole/:id", controler.GetPrivRoleById)
+
 	e.POST("/kelas", controler.CreateKelas)
 	e.PUT("/kelas", controler.UpdateKelas)
 	e.GET("/kelas", controler.GetAllKelas)
+	e.GET("/kelas/:id", controler.GetKelasById)
+	e.DELETE("/kelas/delete/:id", controler.DeleteKelasById)
 	e.GET("/business_field", controler.GetAllBusinessField)
 
 	e.POST("/progress", controler.CreateMeeting)
