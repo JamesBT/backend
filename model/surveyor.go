@@ -14,8 +14,8 @@ import (
 func LoginSurveyor(akun string) (Response, error) {
 	var res Response
 
-	var usr = User{}
-	var loginUsr = User{}
+	var usr = UserSurveyor{}
+	var loginUsr = UserSurveyor{}
 
 	err := json.Unmarshal([]byte(akun), &usr)
 	if err != nil {
@@ -56,9 +56,8 @@ func LoginSurveyor(akun string) (Response, error) {
 	// cek apakah password benar atau tidak
 	queryinsert := `
 	SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, 
-	u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, 
-	ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin, 
-	s.lokasi, s.availability_surveyor 
+	IFNULL(u.tanggal_lahir,''), u.email, u.nomor_telepon, IFNULL(u.foto_profil,''), IFNULL(u.ktp,''),  
+	s.lokasi, s.availability_surveyor, s.suveyor_id 
 	FROM user u 
 	JOIN user_detail ud ON u.user_id = ud.user_detail_id 
 	JOIN surveyor s ON u.user_id = s.user_id 
@@ -72,9 +71,11 @@ func LoginSurveyor(akun string) (Response, error) {
 	}
 	defer stmtinsert.Close()
 
-	var lokasi string
-	var availability_surveyor string
-	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin, &lokasi, &availability_surveyor)
+	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(
+		&loginUsr.User_id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat,
+		&loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp,
+		&loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Lokasi,
+		&loginUsr.Availability_surveyor, &loginUsr.Surveyor_id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "password salah"
@@ -95,7 +96,7 @@ func LoginSurveyor(akun string) (Response, error) {
 
 	var roleId int
 	var roleName string
-	err = rolestmt.QueryRow(userId).Scan(&roleId, &roleName)
+	err = rolestmt.QueryRow(loginUsr.User_id).Scan(&roleId, &roleName)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal mendapatkan role"
@@ -124,24 +125,7 @@ func LoginSurveyor(akun string) (Response, error) {
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil login"
-	res.Data = map[string]interface{}{
-		"id":              loginUsr.Id,
-		"username":        loginUsr.Username,
-		"nama_lengkap":    loginUsr.Nama_lengkap,
-		"alamat":          loginUsr.Alamat,
-		"jenis_kelamin":   loginUsr.Jenis_kelamin,
-		"tanggal_lahir":   loginUsr.Tgl_lahir,
-		"email":           loginUsr.Email,
-		"nomor_telepon":   loginUsr.No_telp,
-		"foto_profil":     loginUsr.Foto_profil,
-		"ktp":             loginUsr.Ktp,
-		"status":          loginUsr.Status,
-		"tipe":            loginUsr.Tipe,
-		"first_login":     loginUsr.First_login,
-		"denied_by_admin": loginUsr.Denied_by_admin,
-		"role_id":         roleId,
-		"role_nama":       roleName,
-	}
+	res.Data = loginUsr
 
 	defer db.DbClose(con)
 
@@ -407,8 +391,8 @@ func GetAllSurveyor() (Response, error) {
 
 func GetSurveyorById(surveyor_id string) (Response, error) {
 	var res Response
-	var dtSurveyor Surveyor
-
+	var dtSurveyor UserSurveyor
+	fmt.Println("get user by user id")
 	con, err := db.DbConnection()
 	if err != nil {
 		res.Status = 401
@@ -417,7 +401,14 @@ func GetSurveyorById(surveyor_id string) (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT * FROM surveyor WHERE surveyor_id = ?"
+	query := `
+		SELECT s.user_id,u.username,u.password,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,u.ktp,s.lokasi,s.availability_surveyor,COUNT(CASE WHEN sr.status_request = 'O' THEN 1 END), 
+			COUNT(CASE WHEN sr.status_request = 'R' THEN 1 END), COUNT(CASE WHEN sr.status_request = 'F' THEN 1 END) AS requests,
+			s.suveyor_id, s.registered_by
+		FROM surveyor s 
+		JOIN user u ON s.user_id = u.user_id 
+		LEFT JOIN survey_request sr ON u.user_id = sr.user_id 
+		WHERE s.suveyor_id = ?`
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -426,8 +417,14 @@ func GetSurveyorById(surveyor_id string) (Response, error) {
 		return res, err
 	}
 	defer stmt.Close()
+
+	var _ongoingReq1 int
+	var _ongoingReq2 int
+	var ongoingReq int
+	var finishedReq int
 	nId, _ := strconv.Atoi(surveyor_id)
-	err = stmt.QueryRow(nId).Scan(&dtSurveyor.Surveyor_id, &dtSurveyor.User_id, &dtSurveyor.Lokasi, &dtSurveyor.Availability_surveyor)
+	err = stmt.QueryRow(nId).Scan(&dtSurveyor.User_id, &dtSurveyor.Username, &dtSurveyor.Password, &dtSurveyor.Nama_lengkap, &dtSurveyor.Alamat, &dtSurveyor.Jenis_kelamin, &dtSurveyor.Tgl_lahir,
+		&dtSurveyor.Email, &dtSurveyor.No_telp, &dtSurveyor.Foto_profil, &dtSurveyor.Ktp, &dtSurveyor.Lokasi, &dtSurveyor.Availability_surveyor, &_ongoingReq1, &_ongoingReq2, &finishedReq, &dtSurveyor.Surveyor_id, &dtSurveyor.Registered_by)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -435,11 +432,115 @@ func GetSurveyorById(surveyor_id string) (Response, error) {
 		return res, err
 	}
 
+	ongoingReq = _ongoingReq1 + _ongoingReq2
+	dtSurveyor.FinishedSurvey = ongoingReq
+
+	// looping untuk ambil semua survey request
+	querysurreq := "SELECT * FROM survey_request WHERE user_id = ?"
+	stmtsurreq, err := con.Prepare(querysurreq)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtsurreq.Close()
+
+	rows, err := stmtsurreq.Query(dtSurveyor.User_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	defer rows.Close()
+	for rows.Next() {
+		var _surveyReq SurveyRequest
+		var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew sql.NullString
+		err := rows.Scan(
+			&_surveyReq.Id_transaksi_jual_sewa, &_surveyReq.User_id, &_surveyReq.Id_asset,
+			&_surveyReq.Created_at, &_surveyReq.Surat_penugasan, &_surveyReq.Dateline,
+			&_surveyReq.Status_request, &_surveyReq.Status_verifikasi,
+			&_surveyReq.Status_submitted, &_surveyReq.Data_lengkap,
+			&usageOld, &usageNew, &_surveyReq.Luas_old, &_surveyReq.Luas_new,
+			&_surveyReq.Nilai_old, &_surveyReq.Nilai_new, &_surveyReq.Kondisi_old,
+			&_surveyReq.Kondisi_new, &_surveyReq.Titik_koordinat_old, &_surveyReq.Titik_koordinat_new,
+			&_surveyReq.Batas_koordinat_old, &_surveyReq.Batas_koordinat_new,
+			&tagsOld, &tagsNew, &gambarOld, &gambarNew)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		if usageOld.Valid {
+			_surveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			_surveyReq.Usage_old = []Kegunaan{}
+		}
+
+		if usageNew.Valid {
+			_surveyReq.Usage_new, err = fetchUsageNames(con, usageNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			_surveyReq.Usage_new = []Kegunaan{}
+		}
+
+		// Fetch names for old and new tags
+		if tagsOld.Valid {
+			_surveyReq.Tags_old, err = fetchTagNames(con, tagsOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			_surveyReq.Tags_old = []Tags{}
+		}
+
+		if tagsNew.Valid {
+			_surveyReq.Tags_new, err = fetchTagNames(con, tagsNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			_surveyReq.Tags_new = []Tags{}
+		}
+
+		if gambarOld.Valid {
+			_surveyReq.Gambar_old = append(_surveyReq.Gambar_old, gambarOld.String)
+		}
+
+		if gambarNew.Valid {
+			_surveyReq.Gambar_new = append(_surveyReq.Gambar_new, gambarNew.String)
+		}
+
+		dtSurveyor.Survey_Request = append(dtSurveyor.Survey_Request, _surveyReq)
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
 	res.Data = dtSurveyor
 
 	defer db.DbClose(con)
+
 	return res, nil
 }
 
@@ -681,8 +782,35 @@ func GetSurveyorByUserId(user_id string) (Response, error) {
 		return res, err
 	}
 
+	checkSurveyorQuery := `SELECT user_id FROM surveyor WHERE user_id = ?`
+	stmtCheck, err := con.Prepare(checkSurveyorQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtCheck.Close()
+
+	var existingUserId int
+	nId, _ := strconv.Atoi(user_id)
+	err = stmtCheck.QueryRow(nId).Scan(&existingUserId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			res.Status = 404
+			res.Message = "Surveyor tidak ditemukan"
+			res.Data = nil
+			return res, nil
+		} else {
+			res.Status = 401
+			res.Message = "gagal memeriksa user_id"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
 	query := `
-		SELECT u.username,u.password,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,u.ktp,s.lokasi,COUNT(CASE WHEN sr.status_request = 'O' THEN 1 END), 
+		SELECT IFNULL(u.username,''),u.password,u.nama_lengkap,u.alamat,u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,u.foto_profil,u.ktp,s.lokasi,s.availability_surveyor,COUNT(CASE WHEN sr.status_request = 'O' THEN 1 END), 
 			COUNT(CASE WHEN sr.status_request = 'R' THEN 1 END), COUNT(CASE WHEN sr.status_request = 'F' THEN 1 END) AS requests,
 			s.suveyor_id, s.registered_by
 		FROM surveyor s 
@@ -702,10 +830,10 @@ func GetSurveyorByUserId(user_id string) (Response, error) {
 	var _ongoingReq2 int
 	var ongoingReq int
 	var finishedReq int
-	nId, _ := strconv.Atoi(user_id)
+	nId, _ = strconv.Atoi(user_id)
 	dtSurveyor.User_id = nId
 	err = stmt.QueryRow(nId).Scan(&dtSurveyor.Username, &dtSurveyor.Password, &dtSurveyor.Nama_lengkap, &dtSurveyor.Alamat, &dtSurveyor.Jenis_kelamin, &dtSurveyor.Tgl_lahir,
-		&dtSurveyor.Email, &dtSurveyor.No_telp, &dtSurveyor.Foto_profil, &dtSurveyor.Ktp, &dtSurveyor.Lokasi, &_ongoingReq1, &_ongoingReq2, &finishedReq, &dtSurveyor.Surveyor_id, &dtSurveyor.Registered_by)
+		&dtSurveyor.Email, &dtSurveyor.No_telp, &dtSurveyor.Foto_profil, &dtSurveyor.Ktp, &dtSurveyor.Lokasi, &dtSurveyor.Availability_surveyor, &_ongoingReq1, &_ongoingReq2, &finishedReq, &dtSurveyor.Surveyor_id, &dtSurveyor.Registered_by)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -738,8 +866,17 @@ func GetSurveyorByUserId(user_id string) (Response, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var _surveyReq SurveyRequest
-		var usageOld, usageNew, tagsOld, tagsNew sql.NullString
-		err := rows.Scan(&_surveyReq.Id_transaksi_jual_sewa, &_surveyReq.User_id, &_surveyReq.Id_asset, &_surveyReq.Created_at, &_surveyReq.Surat_penugasan, &_surveyReq.Dateline, &_surveyReq.Status_request, &_surveyReq.Status_verifikasi, &_surveyReq.Status_submitted, &_surveyReq.Data_lengkap, &usageOld, &usageNew, &_surveyReq.Luas_old, &_surveyReq.Luas_new, &_surveyReq.Nilai_old, &_surveyReq.Nilai_new, &_surveyReq.Kondisi_old, &_surveyReq.Kondisi_new, &_surveyReq.Titik_koordinat_old, &_surveyReq.Titik_koordinat_new, &_surveyReq.Batas_koordinat_old, &_surveyReq.Batas_koordinat_new, &tagsOld, &tagsNew)
+		var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew sql.NullString
+		err := rows.Scan(
+			&_surveyReq.Id_transaksi_jual_sewa, &_surveyReq.User_id, &_surveyReq.Id_asset,
+			&_surveyReq.Created_at, &_surveyReq.Surat_penugasan, &_surveyReq.Dateline,
+			&_surveyReq.Status_request, &_surveyReq.Status_verifikasi,
+			&_surveyReq.Status_submitted, &_surveyReq.Data_lengkap, &usageOld, &usageNew,
+			&_surveyReq.Luas_old, &_surveyReq.Luas_new, &_surveyReq.Nilai_old,
+			&_surveyReq.Nilai_new, &_surveyReq.Kondisi_old, &_surveyReq.Kondisi_new,
+			&_surveyReq.Titik_koordinat_old, &_surveyReq.Titik_koordinat_new,
+			&_surveyReq.Batas_koordinat_old, &_surveyReq.Batas_koordinat_new,
+			&tagsOld, &tagsNew, &gambarOld, &gambarNew)
 		if err != nil {
 			res.Status = 401
 			res.Message = "scan gagal"
@@ -794,6 +931,14 @@ func GetSurveyorByUserId(user_id string) (Response, error) {
 			}
 		} else {
 			_surveyReq.Tags_new = []Tags{}
+		}
+
+		if gambarOld.Valid {
+			_surveyReq.Gambar_old = append(_surveyReq.Gambar_old, gambarOld.String)
+		}
+
+		if gambarNew.Valid {
+			_surveyReq.Gambar_new = append(_surveyReq.Gambar_new, gambarNew.String)
 		}
 
 		dtSurveyor.Survey_Request = append(dtSurveyor.Survey_Request, _surveyReq)
@@ -946,5 +1091,164 @@ func UpdateSurveyorByUserId(input string) (Response, error) {
 	res.Data = tempuser.Data
 
 	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllSurveyorAktif() (Response, error) {
+	var res Response
+	var dtUserSurveyor = []UserSurveyor{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT u.user_id,u.username,u.password,u.nama_lengkap,u.alamat,
+	u.jenis_kelamin,u.tanggal_lahir,u.email,u.nomor_telepon,
+	u.foto_profil,u.ktp,s.suveyor_id,s.registered_by,
+	s.lokasi,s.availability_surveyor 
+	FROM surveyor s 
+	LEFT JOIN user u ON s.user_id = u.user_id
+	WHERE s.availability_surveyor = 'Y'
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var _dtUserSurveyor UserSurveyor
+		err := rows.Scan(&_dtUserSurveyor.User_id, &_dtUserSurveyor.Username, &_dtUserSurveyor.Password, &_dtUserSurveyor.Nama_lengkap, &_dtUserSurveyor.Alamat, &_dtUserSurveyor.Jenis_kelamin, &_dtUserSurveyor.Tgl_lahir, &_dtUserSurveyor.Email, &_dtUserSurveyor.No_telp, &_dtUserSurveyor.Foto_profil, &_dtUserSurveyor.Ktp, &_dtUserSurveyor.Surveyor_id, &_dtUserSurveyor.Registered_by, &_dtUserSurveyor.Lokasi, &_dtUserSurveyor.Availability_surveyor)
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		dtUserSurveyor = append(dtUserSurveyor, _dtUserSurveyor)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if len(dtUserSurveyor) == 0 {
+		res.Status = 404
+		res.Message = "Data tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtUserSurveyor
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func ChangeAvailability(input string) (Response, error) {
+	var res Response
+
+	type TempUpdateSurveyorId struct {
+		Id_user      int    `json:"user_id"`
+		Id_surveyor  int    `json:"surveyor_id"`
+		Availability string `json:"availability"`
+	}
+
+	var userSurveyor TempUpdateSurveyorId
+	err := json.Unmarshal([]byte(input), &userSurveyor)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if userSurveyor.Availability != "Y" && userSurveyor.Availability != "N" {
+		res.Status = 401
+		res.Message = "availability error (harus Y/N)"
+		return res, errors.New(res.Message)
+	}
+
+	queryUserId := "SELECT user_id FROM surveyor WHERE suveyor_id = ?"
+	stmtUserId, err := con.Prepare(queryUserId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mendapatkan user_id"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtUserId.Close()
+
+	err = stmtUserId.QueryRow(userSurveyor.Id_surveyor).Scan(&userSurveyor.Id_user)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			res.Status = 404
+			res.Message = "Surveyor not found"
+		} else {
+			res.Status = 401
+			res.Message = "Failed to execute statement"
+		}
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE surveyor SET availability_surveyor = ? WHERE suveyor_id = ? "
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(userSurveyor.Availability, userSurveyor.Id_surveyor)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var tempuser Response
+	tempuser, _ = GetSurveyorByUserId(strconv.Itoa(userSurveyor.Id_user))
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = tempuser.Data
+
+	defer db.DbClose(con)
+
 	return res, nil
 }

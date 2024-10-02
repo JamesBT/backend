@@ -130,6 +130,8 @@ type SurveyRequest struct {
 	Batas_koordinat_new    string     `json:"batas_koordinat_new"`
 	Tags_old               []Tags     `json:"tags_old"`
 	Tags_new               []Tags     `json:"tags_new"`
+	Gambar_old             []string   `json:"gambar_old"`
+	Gambar_new             []string   `json:"gambar_new"`
 }
 
 type TransactionRequest struct {

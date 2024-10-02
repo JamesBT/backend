@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -529,8 +530,8 @@ func CreateAssetChild(
 
 func GetAllAsset() (Response, error) {
 	var res Response
-	var arrAset = []Asset{}
-	var dtAset Asset
+	var arrAset []Asset
+	assetMap := make(map[int]*Asset) // Map to store assets by their id_asset
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -540,7 +541,10 @@ func GetAllAsset() (Response, error) {
 		return res, err
 	}
 
-	query := "SELECT * FROM asset WHERE deleted_at IS NULL"
+	query := `SELECT a.*, IFNULL(ag.link_gambar,'') as link_gambar
+			  FROM asset a
+			  LEFT JOIN asset_gambar ag ON a.id_asset = ag.id_asset_gambar
+			  WHERE a.deleted_at IS NULL`
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -558,13 +562,20 @@ func GetAllAsset() (Response, error) {
 		return res, err
 	}
 	defer result.Close()
-	var masaSewa []byte
-	var deleteAt []byte
+
+	var masaSewa, deleteAt []byte
+	var linkGambar sql.NullString
 	var idJoin, idAssetChild sql.NullString
 	var idAssetParent, idProvinsi sql.NullInt32
 
 	for result.Next() {
-		err = result.Scan(&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
+		var dtAset Asset
+		err = result.Scan(
+			&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset,
+			&dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat,
+			&dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan,
+			&dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at,
+			&deleteAt, &linkGambar)
 		if err != nil {
 			res.Status = 401
 			res.Message = "rows scan"
@@ -572,15 +583,16 @@ func GetAllAsset() (Response, error) {
 			return res, err
 		}
 
+		// Handle potential null values
 		if masaSewa != nil {
-			masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+			masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(masaSewa))
 			if masaSewaErr != nil {
-				dtAset.Deleted_at = ""
+				dtAset.Masa_sewa = ""
 			} else {
-				dtAset.Deleted_at = masaSewaWaktu.Format("2006-01-02 15:04:05")
+				dtAset.Masa_sewa = masaSewaWaktu.Format("2006-01-02 15:04:05")
 			}
 		} else {
-			dtAset.Deleted_at = ""
+			dtAset.Masa_sewa = ""
 		}
 
 		if deleteAt != nil {
@@ -613,8 +625,37 @@ func GetAllAsset() (Response, error) {
 		} else {
 			dtAset.Provinsi = 0
 		}
-		arrAset = append(arrAset, dtAset)
+
+		// Check if the asset already exists in the map
+		if asset, exists := assetMap[dtAset.Id_asset]; exists {
+			// If asset exists, append the image to its list
+			if linkGambar.Valid && linkGambar.String != "" {
+				asset.LinkGambar = append(asset.LinkGambar, linkGambar.String)
+			}
+		} else {
+			// If it's a new asset, initialize the LinkGambar slice and add it to the map
+			if linkGambar.Valid && linkGambar.String != "" {
+				dtAset.LinkGambar = []string{linkGambar.String}
+			} else {
+				dtAset.LinkGambar = []string{}
+			}
+			assetMap[dtAset.Id_asset] = &dtAset
+		}
 	}
+
+	// Convert map to slice
+	for _, asset := range assetMap {
+		// Ensure that LinkGambar is truly empty if no valid images were found
+		if len(asset.LinkGambar) == 1 && asset.LinkGambar[0] == "" {
+			asset.LinkGambar = []string{}
+		}
+		arrAset = append(arrAset, *asset)
+	}
+
+	// Sort arrAset by Id_asset
+	sort.Slice(arrAset, func(i, j int) bool {
+		return arrAset[i].Id_asset < arrAset[j].Id_asset
+	})
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"

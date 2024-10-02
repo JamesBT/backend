@@ -491,7 +491,13 @@ func LoginAdmin(akun string) (Response, error) {
 	}
 
 	// cek sudah terdaftar atau belum
-	query := "SELECT user_id FROM user WHERE username = ? AND deleted_at IS NULL"
+	query := `
+	SELECT u.user_id 
+	FROM user u
+	LEFT JOIN user_role ur ON u.user_id = ur.user_id
+	LEFT JOIN role r ON ur.role_id = r.role_id 
+	WHERE u.username = ? AND u.deleted_at IS NULL AND r.admin_role = 'Y'
+	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -511,8 +517,7 @@ func LoginAdmin(akun string) (Response, error) {
 	defer stmt.Close()
 
 	// cek apakah password benar atau tidak
-	// queryinsert := "SELECT user_id, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, nomor_telepon, foto_profil, ktp FROM user WHERE username = ? AND password = ?"
-	queryinsert := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, u.tanggal_lahir, u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE u.username = ? AND u.password = ?;"
+	queryinsert := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, IFNULL(u.tanggal_lahir,''), u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE u.username = ? AND u.password = ?;"
 	stmtinsert, err := con.Prepare(queryinsert)
 	if err != nil {
 		res.Status = 401
@@ -522,7 +527,7 @@ func LoginAdmin(akun string) (Response, error) {
 	}
 	defer stmtinsert.Close()
 
-	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin)
+	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe)
 	if err != nil {
 		res.Status = 401
 		res.Message = "password salah"
@@ -573,22 +578,20 @@ func LoginAdmin(akun string) (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil login"
 	res.Data = map[string]interface{}{
-		"id":              loginUsr.Id,
-		"username":        loginUsr.Username,
-		"nama_lengkap":    loginUsr.Nama_lengkap,
-		"alamat":          loginUsr.Alamat,
-		"jenis_kelamin":   loginUsr.Jenis_kelamin,
-		"tanggal_lahir":   loginUsr.Tgl_lahir,
-		"email":           loginUsr.Email,
-		"nomor_telepon":   loginUsr.No_telp,
-		"foto_profil":     loginUsr.Foto_profil,
-		"ktp":             loginUsr.Ktp,
-		"status":          loginUsr.Status,
-		"tipe":            loginUsr.Tipe,
-		"first_login":     loginUsr.First_login,
-		"denied_by_admin": loginUsr.Denied_by_admin,
-		"role_id":         roleId,
-		"role_nama":       roleName,
+		"id":            loginUsr.Id,
+		"username":      loginUsr.Username,
+		"nama_lengkap":  loginUsr.Nama_lengkap,
+		"alamat":        loginUsr.Alamat,
+		"jenis_kelamin": loginUsr.Jenis_kelamin,
+		"tanggal_lahir": loginUsr.Tgl_lahir,
+		"email":         loginUsr.Email,
+		"nomor_telepon": loginUsr.No_telp,
+		"foto_profil":   loginUsr.Foto_profil,
+		"ktp":           loginUsr.Ktp,
+		"status":        loginUsr.Status,
+		"tipe":          loginUsr.Tipe,
+		"role_id":       roleId,
+		"role_nama":     roleName,
 	}
 
 	defer db.DbClose(con)

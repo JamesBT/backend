@@ -1,0 +1,8 @@
+{<2024-09-24 10:45:01>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-09-24 10:46:10>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-09-24 10:47:05>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-09-24 10:47:43>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-09-24 10:49:56>;Ip:::1;Nama API:UploadFoto;lenRespon:0;LenParam:3;}
+{<2024-09-24 11:07:48>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-09-24 11:14:59>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}
+{<2024-09-24 11:25:13>;Ip:::1;Nama API:UploadFoto;lenRespon:1;LenParam:3;}

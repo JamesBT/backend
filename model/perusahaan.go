@@ -2,6 +2,7 @@ package model
 
 import (
 	"TemplateProject/db"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // CRUD perusahaan ============================================================================
@@ -243,9 +245,14 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 		CreatedAt           string  `json:"created_at"`
 		Field               []BusinessField
 		UserJoined          []TempUser
+		LinkedPerusahaan    []TempPerusahaan
+		ArchivedAsset       []Asset
 	}
+
 	var dtPerusahaan TempPerusahaan
 	var dtUser []TempUser
+	var linkedPerusahaan []TempPerusahaan
+	var archivedAssets []Asset
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -257,7 +264,8 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 
 	query := `
 		SELECT p.perusahaan_id, p.status, p.name, p.username, p.lokasi, p.tipe, IFNULL(p.kelas,0), p.dokumen_kepemilikan, p.dokumen_perusahaan,
-			p.modal_awal,p.deskripsi, p.created_at, u.user_id, u.username, u.nama_lengkap, IFNULL(r.nama_role,"")
+			p.modal_awal,p.deskripsi, p.created_at, p.id_parent, p.id_child, p.archive_asset,
+			u.user_id, u.username, u.nama_lengkap, IFNULL(r.nama_role,"")
 		FROM perusahaan p
 		LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
 		LEFT JOIN user u on up.id_user = u.user_id
@@ -283,12 +291,17 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 	}
 	defer rows.Close()
 
+	var idParent, idChild, idArchiveAsset sql.NullString
+
 	for rows.Next() {
 		var usr TempUser
-		err = rows.Scan(&dtPerusahaan.Id, &dtPerusahaan.Status, &dtPerusahaan.Nama, &dtPerusahaan.Username, &dtPerusahaan.Lokasi, &dtPerusahaan.Tipe,
-			&dtPerusahaan.Kelas,
-			&dtPerusahaan.Dokumen_kepemilikan, &dtPerusahaan.Dokumen_perusahaan, &dtPerusahaan.Modal,
-			&dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt, &usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.UserRole)
+		err = rows.Scan(
+			&dtPerusahaan.Id, &dtPerusahaan.Status, &dtPerusahaan.Nama,
+			&dtPerusahaan.Username, &dtPerusahaan.Lokasi, &dtPerusahaan.Tipe,
+			&dtPerusahaan.Kelas, &dtPerusahaan.Dokumen_kepemilikan, &dtPerusahaan.Dokumen_perusahaan,
+			&dtPerusahaan.Modal, &dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt,
+			&idParent, &idChild, &idArchiveAsset,
+			&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.UserRole)
 		if err != nil {
 			res.Status = 401
 			res.Message = "Failed to scan row"
@@ -300,7 +313,51 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 		}
 	}
 
+	if idChild.Valid && idChild.String != "" {
+		childIds := strings.Split(idChild.String, ",")
+		for _, childId := range childIds {
+			var childPerusahaan TempPerusahaan
+			childQuery := `
+				SELECT perusahaan_id, status, name, username, lokasi, tipe, IFNULL(kelas,0), dokumen_kepemilikan, dokumen_perusahaan, 
+				modal_awal, deskripsi, created_at 
+				FROM perusahaan WHERE perusahaan_id = ?
+			`
+			err := con.QueryRow(childQuery, childId).Scan(&childPerusahaan.Id, &childPerusahaan.Status, &childPerusahaan.Nama,
+				&childPerusahaan.Username, &childPerusahaan.Lokasi, &childPerusahaan.Tipe,
+				&childPerusahaan.Kelas, &childPerusahaan.Dokumen_kepemilikan, &childPerusahaan.Dokumen_perusahaan,
+				&childPerusahaan.Modal, &childPerusahaan.Deskripsi, &childPerusahaan.CreatedAt)
+			if err != nil {
+				res.Status = 401
+				res.Message = "Gagal mengambil data perusahaan anak"
+				res.Data = err.Error()
+				return res, err
+			}
+			linkedPerusahaan = append(linkedPerusahaan, childPerusahaan)
+		}
+	}
+
+	if idArchiveAsset.Valid && idArchiveAsset.String != "" {
+		assetIds := strings.Split(idArchiveAsset.String, ",")
+		for _, childId := range assetIds {
+			var childAsset Asset
+			childQuery := `
+				SELECT id_asset, nama, alamat 
+				FROM asset WHERE id_asset = ?
+			`
+			err := con.QueryRow(childQuery, childId).Scan(&childAsset.Id_asset, &childAsset.Nama, &childAsset.Alamat)
+			if err != nil {
+				res.Status = 401
+				res.Message = "Gagal mengambil data perusahaan anak"
+				res.Data = err.Error()
+				return res, err
+			}
+			archivedAssets = append(archivedAssets, childAsset)
+		}
+	}
+
 	dtPerusahaan.UserJoined = dtUser
+	dtPerusahaan.LinkedPerusahaan = linkedPerusahaan
+	dtPerusahaan.ArchivedAsset = archivedAssets
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengambil data"
@@ -740,5 +797,518 @@ func GetAllPerusahaanJoinedByUserId(user_id string) (Response, error) {
 	res.Data = arrPerusahaan
 
 	defer db.DbClose(con)
+	return res, nil
+}
+
+func JoinPerusahaan(id_perusahaan_1, id_perusahaan_2 string) (Response, error) {
+	var res Response
+	var perusahaan1Exists, perusahaan2Exists bool
+	var currentIdChild string
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer db.DbClose(con)
+
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM perusahaan WHERE perusahaan_id = ?)", id_perusahaan_1).Scan(&perusahaan1Exists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengecek perusahaan 1"
+		res.Data = err.Error()
+		return res, err
+	}
+	if !perusahaan1Exists {
+		res.Status = 404
+		res.Message = "Perusahaan 1 tidak ditemukan"
+		return res, nil
+	}
+
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM perusahaan WHERE perusahaan_id = ?)", id_perusahaan_2).Scan(&perusahaan2Exists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengecek perusahaan 2"
+		res.Data = err.Error()
+		return res, err
+	}
+	if !perusahaan2Exists {
+		res.Status = 404
+		res.Message = "Perusahaan 2 tidak ditemukan"
+		return res, nil
+	}
+
+	err = con.QueryRow("SELECT IFNULL(id_child, '') FROM perusahaan WHERE perusahaan_id = ?", id_perusahaan_1).Scan(&currentIdChild)
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal mengecek id_child perusahaan 1"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tx, err := con.Begin()
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal memulai transaksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var newIdChild string
+	if currentIdChild == "" {
+		newIdChild = id_perusahaan_2
+	} else {
+		newIdChild = currentIdChild + "," + id_perusahaan_2
+	}
+
+	updateQuery1 := `
+		UPDATE perusahaan 
+		SET id_child = ?, id_role = 'P' 
+		WHERE perusahaan_id = ?`
+	_, err = tx.Exec(updateQuery1, newIdChild, id_perusahaan_1)
+	if err != nil {
+		tx.Rollback()
+		res.Status = 500
+		res.Message = "Gagal memperbarui perusahaan 1"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	updateQuery2 := `
+		UPDATE perusahaan 
+		SET id_parent = ?, id_role = 'C' 
+		WHERE perusahaan_id = ?`
+	_, err = tx.Exec(updateQuery2, id_perusahaan_1, id_perusahaan_2)
+	if err != nil {
+		tx.Rollback()
+		res.Status = 500
+		res.Message = "Gagal memperbarui perusahaan 2"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal mengonfirmasi transaksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil menggabungkan dua perusahaan"
+	return res, nil
+}
+
+func GetAssetArchiveByPerusahaanId(perusahaan_id string) (Response, error) {
+	var res Response
+	var dtArchiveAsset []Asset
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka koneksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+		SELECT archive_asset
+		FROM perusahaan 
+		WHERE perusahaan_id = ? 
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	var idArchiveAsset sql.NullString
+
+	nId, _ := strconv.Atoi(perusahaan_id)
+	err = stmt.QueryRow(nId).Scan(&idArchiveAsset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "rows gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if idArchiveAsset.Valid && idArchiveAsset.String != "" {
+		assetIds := strings.Split(idArchiveAsset.String, ",")
+		for _, childId := range assetIds {
+			var childAsset Asset
+			childQuery := `
+				SELECT id_asset, nama, alamat 
+				FROM asset WHERE id_asset = ?
+			`
+			err := con.QueryRow(childQuery, childId).Scan(&childAsset.Id_asset, &childAsset.Nama, &childAsset.Alamat)
+			if err != nil {
+				res.Status = 401
+				res.Message = "Gagal mengambil data perusahaan anak"
+				res.Data = err.Error()
+				return res, err
+			}
+			dtArchiveAsset = append(dtArchiveAsset, childAsset)
+		}
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtArchiveAsset
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func AddAssetArchive(input string) (Response, error) {
+	var res Response
+	var perusahaan1Exists bool
+	var currentAsset string
+
+	type TempUpdatePerusahaan struct {
+		Perusahaan_id string `json:"perusahaan"`
+		Asset_id      string `json:"asset"`
+	}
+	var dtPerusahaan TempUpdatePerusahaan
+	err := json.Unmarshal([]byte(input), &dtPerusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer db.DbClose(con)
+
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM perusahaan WHERE perusahaan_id = ?)", dtPerusahaan.Perusahaan_id).Scan(&perusahaan1Exists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengecek perusahaan 1"
+		res.Data = err.Error()
+		return res, err
+	}
+	if !perusahaan1Exists {
+		res.Status = 404
+		res.Message = "Perusahaan 1 tidak ditemukan"
+		return res, nil
+	}
+
+	err = con.QueryRow("SELECT IFNULL(archive_asset, '') FROM perusahaan WHERE perusahaan_id = ?", dtPerusahaan.Perusahaan_id).Scan(&currentAsset)
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal mengecek archive asset perusahaan"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tx, err := con.Begin()
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal memulai transaksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var newIdChild string
+	if currentAsset == "" {
+		newIdChild = dtPerusahaan.Asset_id
+	} else {
+		newIdChild = currentAsset + "," + dtPerusahaan.Asset_id
+	}
+
+	updateQuery1 := `
+		UPDATE perusahaan 
+		SET archive_asset = ? 
+		WHERE perusahaan_id = ?`
+	_, err = tx.Exec(updateQuery1, newIdChild, dtPerusahaan.Perusahaan_id)
+	if err != nil {
+		tx.Rollback()
+		res.Status = 500
+		res.Message = "Gagal memperbarui archive asset"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal mengonfirmasi transaksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil menambahkan aset archive"
+	return res, nil
+}
+
+func RemoveAssetArchive(input string) (Response, error) {
+	var res Response
+	var perusahaan1Exists bool
+	var currentAsset string
+
+	type TempUpdatePerusahaan struct {
+		Perusahaan_id string `json:"perusahaan"`
+		Asset_id      string `json:"asset"`
+	}
+	var dtPerusahaan TempUpdatePerusahaan
+	err := json.Unmarshal([]byte(input), &dtPerusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer db.DbClose(con)
+
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM perusahaan WHERE perusahaan_id = ?)", dtPerusahaan.Perusahaan_id).Scan(&perusahaan1Exists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengecek perusahaan 1"
+		res.Data = err.Error()
+		return res, err
+	}
+	if !perusahaan1Exists {
+		res.Status = 404
+		res.Message = "Perusahaan 1 tidak ditemukan"
+		return res, nil
+	}
+
+	err = con.QueryRow("SELECT IFNULL(archive_asset, '') FROM perusahaan WHERE perusahaan_id = ?", dtPerusahaan.Perusahaan_id).Scan(&currentAsset)
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal mengecek archive asset perusahaan"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tx, err := con.Begin()
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal memulai transaksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	assets := strings.Split(currentAsset, ",")
+	var newAssets []string
+	for _, asset := range assets {
+		if asset != dtPerusahaan.Asset_id {
+			newAssets = append(newAssets, asset)
+		}
+	}
+
+	newArchiveAsset := strings.Join(newAssets, ",")
+
+	updateQuery1 := `
+		UPDATE perusahaan 
+		SET archive_asset = ? 
+		WHERE perusahaan_id = ?`
+	_, err = tx.Exec(updateQuery1, newArchiveAsset, dtPerusahaan.Perusahaan_id)
+	if err != nil {
+		tx.Rollback()
+		res.Status = 500
+		res.Message = "Gagal memperbarui archive asset"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		res.Status = 500
+		res.Message = "Gagal mengonfirmasi transaksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil menambahkan aset archive"
+	return res, nil
+}
+
+func LoginPerusahaan(id_perusahaan, id_user string) (Response, error) {
+	var res Response
+
+	fmt.Println("login perusahaan")
+	type TempUser struct {
+		Id               int    `json:"id"`
+		Username         string `json:"username"`
+		Password         string `json:"password"`
+		Nama_lengkap     string `json:"nama_lengkap"`
+		Alamat           string `json:"alamat"`
+		Jenis_kelamin    string `json:"jenis_kelamin"`
+		Tgl_lahir        string `json:"tgl_lahir"`
+		Email            string `json:"email"`
+		No_telp          string `json:"no_telp"`
+		Foto_profil      string `json:"foto_profil"`
+		Ktp              string `json:"ktp"`
+		Kelas            int    `json:"kelas"`
+		Status           string `json:"status"`
+		Tipe             int    `json:"tipe"`
+		First_login      string `json:"first_login"`
+		Denied_by_admin  string `json:"denied_by_admin"`
+		UserRole         string `json:"user_role"`
+		PerusahaanJoined []Perusahaan
+	}
+	type TempPerusahaan struct {
+		Id                  int     `json:"id_perusahaan"`
+		Status              string  `json:"status"`
+		Nama                string  `json:"nama"`
+		Username            string  `json:"username"`
+		Lokasi              string  `json:"lokasi"`
+		Kelas               int     `json:"kelas"`
+		Tipe                string  `json:"tipe"`
+		Dokumen_kepemilikan string  `json:"dokumen_kepemilikan"`
+		Dokumen_perusahaan  string  `json:"dokumen_perusahaan"`
+		Modal               float64 `json:"modal"`
+		Deskripsi           string  `json:"deskripsi"`
+		CreatedAt           string  `json:"created_at"`
+		Role_user           Role    `json:"role_user"`
+		Field               []BusinessField
+		UserJoined          []TempUser
+		LinkedPerusahaan    []TempPerusahaan
+		ArchivedAsset       []Asset
+	}
+
+	var dtPerusahaan TempPerusahaan
+	var dtUser []TempUser
+	var linkedPerusahaan []TempPerusahaan
+	var archivedAssets []Asset
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka koneksi"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+		SELECT p.perusahaan_id, p.status, p.name, p.username, p.lokasi, p.tipe, IFNULL(p.kelas,0), p.dokumen_kepemilikan, p.dokumen_perusahaan,
+			p.modal_awal,p.deskripsi, p.created_at, p.id_parent, p.id_child, p.archive_asset,
+			u.user_id, u.username, u.nama_lengkap, IFNULL(r.nama_role,""), IFNULL(up.id_role,0), IFNULL(r.nama_role,'')
+		FROM perusahaan p
+		LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
+		LEFT JOIN user u on up.id_user = u.user_id
+		LEFT JOIN role r ON up.id_role = r.role_id 
+		WHERE p.perusahaan_id = ? AND up.id_user = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(id_perusahaan)
+	rows, err := stmt.Query(nId, id_user)
+	if err != nil {
+		res.Status = 401
+		res.Message = "rows gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	var idParent, idChild, idArchiveAsset sql.NullString
+
+	for rows.Next() {
+		var usr TempUser
+		var tempRole Role
+		err = rows.Scan(
+			&dtPerusahaan.Id, &dtPerusahaan.Status, &dtPerusahaan.Nama,
+			&dtPerusahaan.Username, &dtPerusahaan.Lokasi, &dtPerusahaan.Tipe,
+			&dtPerusahaan.Kelas, &dtPerusahaan.Dokumen_kepemilikan, &dtPerusahaan.Dokumen_perusahaan,
+			&dtPerusahaan.Modal, &dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt,
+			&idParent, &idChild, &idArchiveAsset,
+			&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.UserRole,
+			&tempRole.Role_id, &tempRole.Nama_role)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Failed to scan row"
+			res.Data = err.Error()
+			return res, err
+		}
+		if usr.Id != 0 {
+			dtUser = append(dtUser, usr)
+		}
+	}
+
+	if idChild.Valid && idChild.String != "" {
+		childIds := strings.Split(idChild.String, ",")
+		for _, childId := range childIds {
+			var childPerusahaan TempPerusahaan
+			childQuery := `
+				SELECT perusahaan_id, status, name, username, lokasi, tipe, IFNULL(kelas,0), dokumen_kepemilikan, dokumen_perusahaan, 
+				modal_awal, deskripsi, created_at 
+				FROM perusahaan WHERE perusahaan_id = ?
+			`
+			err := con.QueryRow(childQuery, childId).Scan(&childPerusahaan.Id, &childPerusahaan.Status, &childPerusahaan.Nama,
+				&childPerusahaan.Username, &childPerusahaan.Lokasi, &childPerusahaan.Tipe,
+				&childPerusahaan.Kelas, &childPerusahaan.Dokumen_kepemilikan, &childPerusahaan.Dokumen_perusahaan,
+				&childPerusahaan.Modal, &childPerusahaan.Deskripsi, &childPerusahaan.CreatedAt)
+			if err != nil {
+				res.Status = 401
+				res.Message = "Gagal mengambil data perusahaan anak"
+				res.Data = err.Error()
+				return res, err
+			}
+			linkedPerusahaan = append(linkedPerusahaan, childPerusahaan)
+		}
+	}
+
+	if idArchiveAsset.Valid && idArchiveAsset.String != "" {
+		assetIds := strings.Split(idArchiveAsset.String, ",")
+		for _, childId := range assetIds {
+			var childAsset Asset
+			childQuery := `
+				SELECT id_asset, nama, alamat 
+				FROM asset WHERE id_asset = ?
+			`
+			err := con.QueryRow(childQuery, childId).Scan(&childAsset.Id_asset, &childAsset.Nama, &childAsset.Alamat)
+			if err != nil {
+				res.Status = 401
+				res.Message = "Gagal mengambil data perusahaan anak"
+				res.Data = err.Error()
+				return res, err
+			}
+			archivedAssets = append(archivedAssets, childAsset)
+		}
+	}
+
+	dtPerusahaan.UserJoined = dtUser
+	dtPerusahaan.LinkedPerusahaan = linkedPerusahaan
+	dtPerusahaan.ArchivedAsset = archivedAssets
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtPerusahaan
+
+	defer db.DbClose(con)
+
 	return res, nil
 }

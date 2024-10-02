@@ -938,3 +938,325 @@ func DeleteRoleById(id string) (Response, error) {
 
 	return res, nil
 }
+
+// PRIV ROLE UNTUK PERUSAHAAN
+func CreatePrivRolePerusahaan(privrole string) (Response, error) {
+	var res Response
+
+	type InputRole struct {
+		Id_role       string `json:"role"`
+		Id_privileges string `json:"privilege"`
+		Id_perusahaan string `json:"perusahaan"`
+	}
+
+	var dtUserRole InputRole
+	err := json.Unmarshal([]byte(privrole), &dtUserRole)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var perusahaanExists bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM perusahaan WHERE perusahaan_id = ?)", dtUserRole.Id_perusahaan).Scan(&perusahaanExists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengecek perusahaan"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if !perusahaanExists {
+		res.Status = 400
+		res.Message = "Perusahaan tidak ditemukan"
+		return res, nil
+	}
+
+	var roleExists bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM role WHERE role_id = ?)", dtUserRole.Id_role).Scan(&roleExists)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengecek role"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	if !roleExists {
+		res.Status = 400
+		res.Message = "Role tidak ditemukan"
+		return res, nil
+	}
+
+	deletePrivilegesQuery := "DELETE FROM role_privilege_all WHERE `id_perusahaan`= ? "
+	deletestmt, err := con.Prepare(deletePrivilegesQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt delete gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	_, err = deletestmt.Exec(dtUserRole.Id_perusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec delete privilege gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	deletestmt.Close()
+
+	privileges := strings.Split(dtUserRole.Id_privileges, ",")
+	insertPrivilegeQuery := "INSERT INTO role_privilege_all (id_perusahaan,id_role, id_privilege) VALUES (?, ?, ?)"
+
+	for _, privilege := range privileges {
+		privilegeId := strings.TrimSpace(privilege)
+
+		var privilegeExists bool
+		err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM privilege WHERE privilege_id = ?)", privilegeId).Scan(&privilegeExists)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal mengecek privilege"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		if !privilegeExists {
+			res.Status = 400
+			res.Message = fmt.Sprintf("Privilege dengan ID %s tidak ditemukan", privilegeId)
+			return res, nil
+		}
+
+		stmt, err := con.Prepare(insertPrivilegeQuery)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt privilege gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		_, err = stmt.Exec(dtUserRole.Id_perusahaan, dtUserRole.Id_role, privilegeId)
+		stmt.Close()
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec privilege gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil membuat role privilege"
+	res.Data = dtUserRole
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func EditPrivRoleByPerusahaanId(userRole string) (Response, error) {
+	var res Response
+
+	type InputRole struct {
+		// id role bukan role_privilege_user
+		Id_role       string `json:"role"`
+		Privileges    string `json:"privilege"`
+		Id_perusahaan string `json:"perusahaan"`
+	}
+	var dtUserRole InputRole
+	err := json.Unmarshal([]byte(userRole), &dtUserRole)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	deletePrivilegesQuery := "DELETE FROM role_privilege_all WHERE `id_role` = ? AND `id_perusahaan`= ? "
+	deletestmt, err := con.Prepare(deletePrivilegesQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt delete gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	_, err = deletestmt.Exec(dtUserRole.Id_role, dtUserRole.Id_perusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec delete privilege gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	deletestmt.Close()
+
+	privileges := strings.Split(dtUserRole.Privileges, ",")
+	insertPrivilegeQuery := "INSERT INTO role_privilege_all (id_perusahaan,id_role, id_privilege) VALUES (?, ?, ?)"
+
+	for _, privilege := range privileges {
+		privilegeId := strings.TrimSpace(privilege)
+
+		privstmt, err := con.Prepare(insertPrivilegeQuery)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt privilege gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		_, err = privstmt.Exec(dtUserRole.Id_perusahaan, dtUserRole.Id_role, privilegeId)
+		privstmt.Close()
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec privilege gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengubah role privilege"
+	res.Data = dtUserRole
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllPrivRoleByPerusahaanId(id_perusahaan string) (Response, error) {
+	var res Response
+	type TempRole struct {
+		Role_id   int         `json:"role_id"`
+		Nama_role string      `json:"nama_role"`
+		Privilege []Privilege `json:"privilege"`
+	}
+	var arrRole = []TempRole{}
+
+	fmt.Println("get all priv role by perusahaan id")
+
+	roleMap := make(map[int]*TempRole)
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+	SELECT r.role_id, r.nama_role, IFNULL(p.privilege_id,0), IFNULL(p.nama_privilege,"")
+	FROM role_privilege_all rpa
+	LEFT JOIN role r ON rpa.id_role = r.role_id
+	LEFT JOIN privilege p ON rpa.id_privilege = p.privilege_id
+	WHERE rpa.id_perusahaan = ?
+	ORDER BY r.role_id;
+	`
+
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query(id_perusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+
+	for result.Next() {
+		var roleId int
+		var roleName string
+		var temppriv Privilege
+
+		err = result.Scan(&roleId, &roleName, &temppriv.Privilege_id, &temppriv.Nama_privilege)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+		if _, exists := roleMap[roleId]; !exists {
+			roleMap[roleId] = &TempRole{
+				Role_id:   roleId,
+				Nama_role: roleName,
+				Privilege: []Privilege{},
+			}
+		}
+		if temppriv.Privilege_id != 0 && temppriv.Nama_privilege != "" {
+			roleMap[roleId].Privilege = append(roleMap[roleId].Privilege, temppriv)
+		}
+	}
+
+	var roleIds []int
+	for roleId := range roleMap {
+		roleIds = append(roleIds, roleId)
+	}
+	sort.Ints(roleIds)
+	for _, roleId := range roleIds {
+		arrRole = append(arrRole, *roleMap[roleId])
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrRole
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func DeleteRoleByPerusahaanId(id_perusahaan, id_role string) (Response, error) {
+	var res Response
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "DELETE FROM role_privilege_all WHERE id_perusahaan = ? AND id_role = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(id_perusahaan, id_role)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil menghapus data"
+	res.Data = result
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
