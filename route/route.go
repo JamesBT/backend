@@ -40,6 +40,7 @@ func Init() *echo.Echo {
 	e.POST("/admin", controler.LoginAdmin)
 	e.POST("/user/admin", controler.AddAdmin)
 	e.GET("/admin/role", controler.GetAllRoleAdmin)
+	e.GET("/admin/priv", controler.GetAllPrivAdmin)
 	e.GET("/admin", controler.GetAllAdmin)
 	e.GET("/admin/:id", controler.GetAdminById)
 	e.PUT("/admin/role", controler.UpdateAdminRoleById)
@@ -51,9 +52,12 @@ func Init() *echo.Echo {
 	e.GET("/asset/:id", controler.GetAssetById)
 	e.GET("/asset/user/:id", controler.GetAssetRentedByUserId)
 	e.PUT("/asset/:id", controler.UbahVisibilitasAset)
+	e.PUT("/asset", controler.UpdateAssetById)
 	e.PUT("/asset/nogambar", controler.UpdateAssetByIdWithoutGambar)
 	e.POST("/asset", controler.TambahAsset)
+	e.POST("/asset/gambar", controler.CreateAssetMultipleFile)
 	e.POST("/asset/child", controler.TambahAssetChild)
+	e.POST("/asset/child/gambar", controler.CreateAssetChildMultipleGambar)
 	e.GET("/asset/child/:id", controler.GetAssetChildByParentId)
 	e.GET("/asset/history/:id", controler.GetAssetSurveyHistoryByAssetId)
 	e.POST("/asset/filter", controler.FilterAsset)
@@ -75,6 +79,7 @@ func Init() *echo.Echo {
 	e.POST("/surveyor", controler.SignUpSurveyor)
 	e.POST("/surveyor/auth", controler.LoginSurveyor)
 	e.PUT("/surveyor/avail", controler.ChangeAvailability)
+	e.PUT("/surveyor/lokasi", controler.UpdateLokasiSurveyor)
 
 	e.GET("/survey_req/detail", controler.GetAllSurveyReqDetailed)
 	e.GET("/survey_req/ongoing/:id", controler.GetAllOngoingSurveyReqByUserId)
@@ -116,7 +121,7 @@ func Init() *echo.Echo {
 	e.GET("/tranreq", controler.GetAllTranReq)
 	e.GET("/tranreq/user", controler.GetAllUserTransaction)
 	e.GET("/tranreq/meeting/:id", controler.UserManagementGetMeetingByUserId)
-	e.GET("/tranreq/meeting/perusahaan/:id", controler.UserManagementGetMeetingByUserId)
+	e.GET("/tranreq/meeting/perusahaan/:id", controler.UserManagementGetMeetingByPerusahaanId)
 	e.POST("/tranreq/accept", controler.AcceptTransaction)
 	e.POST("/tranreq/decline", controler.DeclineTransaction)
 	e.GET("/tranreq/:id", controler.GetTranReqById)
@@ -136,11 +141,14 @@ func Init() *echo.Echo {
 
 	e.GET("/priv", controler.GetAllPrivilege)
 
+	e.PUT("/role/perusahaan", controler.EditRoleUserByPerusahaanId)
 	e.GET("/privrole", controler.GetAllPrivRole)
 	e.GET("/privrole/:id", controler.GetPrivRoleById)
 	e.POST("/privrole/perusahaan", controler.CreatePrivRolePerusahaan)
 	e.PUT("/privrole/perusahaan", controler.EditPrivRoleByPerusahaanId)
 	e.GET("/privrole/perusahaan/:id", controler.GetAllPrivRoleByPerusahaanId)
+	e.DELETE("/privrole/perusahaan/user/:id/:id_user", controler.DeleteUserByPerusahaanId)
+
 	e.DELETE("/privrole/perusahaan/:id/:id_role", controler.DeleteRoleByPerusahaanId)
 
 	e.POST("/kelas", controler.CreateKelas)
@@ -163,5 +171,8 @@ func Init() *echo.Echo {
 	e.GET("/tags/used", controler.GetTagsUsed)
 	e.GET("/provinsi", controler.GetAllProvinsi)
 	e.GET("/provinsi/used", controler.GetProvinsiUsed)
+
+	e.GET("/param/:pass", controler.CobaHashing)
+	e.GET("/param/:id/:pass", controler.SamainPassword)
 	return e
 }

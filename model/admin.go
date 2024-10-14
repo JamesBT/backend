@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func AddAdmin(filefoto *multipart.FileHeader, username, password, nama_lengkap, email, no_telp, role string) (Response, error) {
@@ -68,6 +70,14 @@ func AddAdmin(filefoto *multipart.FileHeader, username, password, nama_lengkap, 
 		return res, err
 	}
 
+	hashedPass, err := bcrypt.GenerateFromPassword([]byte(tempUserCompany.Password), 10)
+	if err != nil {
+		res.Status = 401
+		res.Message = "hashing gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	// If the record doesn't exist, insert a new one
 	queryInsert := `
 		INSERT INTO user (username, password, nama_lengkap, email, nomor_telepon) VALUES (?,?,?,?,?)
@@ -81,7 +91,7 @@ func AddAdmin(filefoto *multipart.FileHeader, username, password, nama_lengkap, 
 	}
 	defer stmtInsert.Close()
 
-	result, err := stmtInsert.Exec(tempUserCompany.Username, tempUserCompany.Password, tempUserCompany.Nama_user, tempUserCompany.Email, tempUserCompany.No_telp)
+	result, err := stmtInsert.Exec(tempUserCompany.Username, string(hashedPass), tempUserCompany.Nama_user, tempUserCompany.Email, tempUserCompany.No_telp)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -470,7 +480,6 @@ func GetAdminById(id_user string) (Response, error) {
 
 func LoginAdmin(akun string) (Response, error) {
 	var res Response
-
 	var usr = User{}
 	var loginUsr = User{}
 
@@ -490,7 +499,7 @@ func LoginAdmin(akun string) (Response, error) {
 		return res, err
 	}
 
-	// cek sudah terdaftar atau belum
+	// Cek apakah user terdaftar dan memiliki peran admin
 	query := `
 	SELECT u.user_id 
 	FROM user u
@@ -516,18 +525,48 @@ func LoginAdmin(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	// cek apakah password benar atau tidak
-	queryinsert := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, IFNULL(u.tanggal_lahir,''), u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE u.username = ? AND u.password = ?;"
-	stmtinsert, err := con.Prepare(queryinsert)
+	fmt.Println("user id: ", userId)
+
+	var tempDBPass string
+	querypass := `SELECT password FROM user WHERE user_id = ?;`
+	stmtpass, err := con.Prepare(querypass)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	defer stmtinsert.Close()
+	defer stmtpass.Close()
 
-	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe)
+	err = stmtpass.QueryRow(userId).Scan(&tempDBPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query password gagal"
+		res.Data = err.Error()
+		return res, errors.New("query password gagal")
+	}
+
+	// cek pass sama atau tidak
+	err = bcrypt.CompareHashAndPassword([]byte(tempDBPass), []byte(usr.Password))
+	if err != nil {
+		res.Status = 404
+		res.Message = "password salah"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// Cek apakah password benar
+	queryCheck := "SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, IFNULL(u.tanggal_lahir,''), u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE u.user_id = ?;"
+	stmtCheck, err := con.Prepare(queryCheck)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtCheck.Close()
+
+	err = stmtCheck.QueryRow(userId).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe)
 	if err != nil {
 		res.Status = 401
 		res.Message = "password salah"
@@ -535,20 +574,20 @@ func LoginAdmin(akun string) (Response, error) {
 		return res, errors.New("password salah")
 	}
 
-	// ambil role + privilege
+	// Ambil role + privilege
 	getRoleQuery := "SELECT ur.role_id, r.nama_role FROM user_role ur JOIN role r ON ur.role_id = r.role_id WHERE ur.user_id = ?;"
-	rolestmt, err := con.Prepare(getRoleQuery)
+	roleStmt, err := con.Prepare(getRoleQuery)
 	if err != nil {
 		res.Status = 401
-		res.Message = "stmt update gagal"
+		res.Message = "stmt gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	defer rolestmt.Close()
+	defer roleStmt.Close()
 
 	var roleId int
 	var roleName string
-	err = rolestmt.QueryRow(userId).Scan(&roleId, &roleName)
+	err = roleStmt.QueryRow(userId).Scan(&roleId, &roleName)
 	if err != nil {
 		res.Status = 401
 		res.Message = "gagal mendapatkan role"
@@ -556,18 +595,63 @@ func LoginAdmin(akun string) (Response, error) {
 		return res, err
 	}
 
-	// berhasil login => update timestamp terakhir login
+	// Ambil semua privilege dari role yang diambil
+	privilegesQuery := `
+	SELECT p.privilege_id, p.nama_privilege
+	FROM role_privilege_user rpu
+	JOIN privilege p ON rpu.id_privilege = p.privilege_id
+	WHERE rpu.id_role = ?
+	`
+	privStmt, err := con.Prepare(privilegesQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer privStmt.Close()
+
+	rows, err := privStmt.Query(roleId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	fmt.Println("role: ", roleId)
+
+	// Array to hold all privileges
+	var privileges []map[string]interface{}
+	for rows.Next() {
+		var privilegeId int
+		var privilegeName string
+		err := rows.Scan(&privilegeId, &privilegeName)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal mendapatkan privilege"
+			res.Data = err.Error()
+			return res, err
+		}
+		privileges = append(privileges, map[string]interface{}{
+			"privilege_id":   privilegeId,
+			"nama_privilege": privilegeName,
+		})
+	}
+
+	// Berhasil login => update timestamp terakhir login
 	updateQuery := "UPDATE user SET login_timestamp = NOW() WHERE user_id = ?"
-	updatestmt, err := con.Prepare(updateQuery)
+	updateStmt, err := con.Prepare(updateQuery)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt update gagal"
 		res.Data = err.Error()
 		return res, err
 	}
-	defer updatestmt.Close()
+	defer updateStmt.Close()
 
-	_, err = updatestmt.Exec(userId)
+	_, err = updateStmt.Exec(userId)
 	if err != nil {
 		res.Status = 401
 		res.Message = "update login_timestamp gagal"
@@ -575,6 +659,7 @@ func LoginAdmin(akun string) (Response, error) {
 		return res, err
 	}
 
+	// Response success
 	res.Status = http.StatusOK
 	res.Message = "Berhasil login"
 	res.Data = map[string]interface{}{
@@ -592,10 +677,10 @@ func LoginAdmin(akun string) (Response, error) {
 		"tipe":          loginUsr.Tipe,
 		"role_id":       roleId,
 		"role_nama":     roleName,
+		"privileges":    privileges, // Add privileges to the response
 	}
 
 	defer db.DbClose(con)
-
 	return res, nil
 }
 

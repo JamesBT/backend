@@ -450,12 +450,12 @@ func GetAllPerusahaanDetailed() (Response, error) {
 	query := `
 	SELECT p.perusahaan_id, p.name, 
 		COUNT(DISTINCT up.id_user) AS user_count, 
-		COUNT(DISTINCT tr.id_transaksi_jual_sewa) AS transaction_count 
+		COUNT(DISTINCT tr.id_asset) AS transaction_count 
 	FROM perusahaan p 
 	LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan 
 	LEFT JOIN transaction_request tr ON p.perusahaan_id = tr.perusahaan_id 
 	WHERE p.status = 'A'
-	GROUP BY p.perusahaan_id
+    GROUP BY p.perusahaan_id;
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {

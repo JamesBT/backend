@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // CRUD surveyor ============================================================================
@@ -53,6 +55,36 @@ func LoginSurveyor(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
+	fmt.Println("user id: ", userId)
+
+	var tempDBPass string
+	querypass := `SELECT password FROM user WHERE user_id = ?;`
+	stmtpass, err := con.Prepare(querypass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtpass.Close()
+
+	err = stmtpass.QueryRow(userId).Scan(&tempDBPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query password gagal"
+		res.Data = err.Error()
+		return res, errors.New("query password gagal")
+	}
+
+	// cek pass sama atau tidak
+	err = bcrypt.CompareHashAndPassword([]byte(tempDBPass), []byte(usr.Password))
+	if err != nil {
+		res.Status = 404
+		res.Message = "password salah"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	// cek apakah password benar atau tidak
 	queryinsert := `
 	SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, 
@@ -61,7 +93,7 @@ func LoginSurveyor(akun string) (Response, error) {
 	FROM user u 
 	JOIN user_detail ud ON u.user_id = ud.user_detail_id 
 	JOIN surveyor s ON u.user_id = s.user_id 
-	WHERE u.username = ? AND u.password = ?;`
+	WHERE u.user_id = ?;`
 	stmtinsert, err := con.Prepare(queryinsert)
 	if err != nil {
 		res.Status = 401
@@ -205,6 +237,14 @@ func SignUpSurveyor(akun string) (Response, error) {
 	// }
 	// defer registeredstmt.Close()
 
+	hashedPass, err := bcrypt.GenerateFromPassword([]byte(usr.Password), 10)
+	if err != nil {
+		res.Status = 401
+		res.Message = "hashing gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	// masukkan ke db
 	insertquery := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon,tanggal_lahir) VALUES (?,?,?,?,?,NOW())"
 	insertstmt, err := con.Prepare(insertquery)
@@ -216,7 +256,7 @@ func SignUpSurveyor(akun string) (Response, error) {
 	}
 	defer insertstmt.Close()
 
-	result, err := insertstmt.Exec(usr.Username, usr.Password, usr.Nama_lengkap, usr.Email, usr.No_telp)
+	result, err := insertstmt.Exec(usr.Username, string(hashedPass), usr.Nama_lengkap, usr.Email, usr.No_telp)
 	if err != nil {
 		res.Status = 401
 		res.Message = "insert user gagal"
@@ -1250,5 +1290,54 @@ func ChangeAvailability(input string) (Response, error) {
 
 	defer db.DbClose(con)
 
+	return res, nil
+}
+
+func UpdateLokasiSurveyor(input string) (Response, error) {
+	var res Response
+	type TempUpdateSurveyorId struct {
+		Id_user int    `json:"user_id"`
+		Lokasi  string `json:"lokasi"`
+	}
+
+	var userSurveyor TempUpdateSurveyorId
+	err := json.Unmarshal([]byte(input), &userSurveyor)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE surveyor SET lokasi = ? WHERE user_id = ? "
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(userSurveyor.Lokasi, userSurveyor.Id_user)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate lokasi surveyor"
+
+	defer db.DbClose(con)
 	return res, nil
 }

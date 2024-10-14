@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -257,6 +258,251 @@ func CreateAsset(filelegalitas *multipart.FileHeader, suratkuasa *multipart.File
 	return res, nil
 }
 
+func CreateAssetMultipleFile(filelegalitas *multipart.FileHeader, suratkuasa *multipart.FileHeader,
+	nama, surat_legalitas, tipe, usage, tag, nomorlegalitas, status, alamat, kondisi, koordinat, batas_koordinat, luas, nilai, provinsi string, files []*multipart.FileHeader) (Response, error) {
+
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var provinsiExists bool
+	provQuery := "SELECT EXISTS(SELECT 1 FROM provinsi WHERE id_provinsi = ?)"
+	err = con.QueryRow(provQuery, provinsi).Scan(&provinsiExists)
+	if err != nil || !provinsiExists {
+		res.Status = 401
+		res.Message = "Provinsi tidak valid"
+		res.Data = "Provinsi ID tidak ditemukan"
+		return res, err
+	}
+
+	usageIds := strings.Split(usage, ",")
+	for _, id := range usageIds {
+		var usageExists bool
+		fmt.Println("usage", id)
+		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
+		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
+		if err != nil || !usageExists {
+			res.Status = 401
+			res.Message = "Penggunaan tidak valid"
+			res.Data = "Penggunaan ID " + id + " tidak ditemukan"
+			return res, err
+		}
+	}
+
+	tagIds := strings.Split(tag, ",")
+	for _, id2 := range tagIds {
+		var tagExists bool
+		fmt.Println("tag", id2)
+		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
+		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
+		if err != nil || !tagExists {
+			res.Status = 401
+			res.Message = "Tag tidak valid"
+			res.Data = "Tag ID " + id2 + " tidak ditemukan"
+			return res, err
+		}
+	}
+
+	// query := `
+	// INSERT INTO asset (perusahaan_id, nama, tipe, nomor_legalitas, status_asset, surat_legalitas, alamat,
+	// kondisi, titik_koordinat, batas_koordinat, luas, nilai, provinsi, created_at)
+	// VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+	// `
+	query := `
+	INSERT INTO asset (nama, tipe, nomor_legalitas, status_asset, surat_legalitas, alamat, 
+	kondisi, titik_koordinat, batas_koordinat, luas, nilai, provinsi, created_at) 
+	VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	// result, err := stmt.Exec(
+	// 	perusahaan_id, nama, tipe, nomorlegalitas, status, surat_legalitas, alamat, kondisi, koordinat, batas_koordinat,
+	// 	luas, nilai, provinsi)
+	result, err := stmt.Exec(
+		nama, tipe, nomorlegalitas, status, surat_legalitas, alamat, kondisi, koordinat, batas_koordinat,
+		luas, nilai, provinsi)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	lastId, err := result.LastInsertId()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+
+	// file gambar
+
+	filePaths := []string{}
+	for _, fileHeader := range files {
+		filePath, err := saveAssetGambar(strconv.Itoa(int(lastId)), fileHeader)
+		if err != nil {
+			res.Status = 500
+			res.Message = "Error saving file"
+			res.Data = err.Error()
+			return res, err
+		}
+		filePaths = append(filePaths, filePath)
+	}
+
+	for _, filePath := range filePaths {
+		// Prepare the INSERT statement for each filePath
+		insertImageQuery := "INSERT INTO asset_gambar (id_asset_gambar, link_gambar) VALUES (?, ?)"
+		_, err = con.Exec(insertImageQuery, strconv.Itoa(int(lastId)), filePath)
+		if err != nil {
+			// Handle the error if the insert fails
+			res.Status = 500
+			res.Message = "Error inserting image path"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	// tambah usage + tags
+	for _, usageId := range usageIds {
+		usageQuery := "INSERT INTO asset_penggunaan (id_asset, id_penggunaan) VALUES (?, ?)"
+		_, err = con.Exec(usageQuery, lastId, usageId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Gagal menambah penggunaan"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	// Insert into asset_tags (id_asset, id_tags)
+	for _, tagId := range tagIds {
+		tagQuery := "INSERT INTO asset_tags (id_asset, id_tags) VALUES (?, ?)"
+		_, err = con.Exec(tagQuery, lastId, tagId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Gagal menambah tag"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	// tambah filelegalitas
+	//source
+	srclegalitas, err := filelegalitas.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srclegalitas.Close()
+
+	tempid := int(lastId)
+	_tempid := strconv.Itoa(tempid)
+	// Destination
+	filelegalitas.Filename = _tempid + "_" + filelegalitas.Filename
+	pathFileLegalitas := "uploads/asset/file_legalitas/" + filelegalitas.Filename
+	dstlegalitas, err := os.Create("uploads/asset/file_legalitas/" + filelegalitas.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstlegalitas, srclegalitas); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstlegalitas.Close()
+
+	err = UpdateDataFotoPath("asset", "file_legalitas", pathFileLegalitas, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	// tambah suratkuasa
+	//source
+	srcsuratkuasa, err := suratkuasa.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcsuratkuasa.Close()
+
+	// Destination
+	suratkuasa.Filename = _tempid + "_" + "_" + suratkuasa.Filename
+	pathFileSuratKuasa := "uploads/asset/surat_kuasa/" + suratkuasa.Filename
+	dstsuratkuasa, err := os.Create("uploads/asset/surat_kuasa/" + suratkuasa.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstsuratkuasa, srcsuratkuasa); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstsuratkuasa.Close()
+
+	err = UpdateDataFotoPath("asset", "surat_kuasa", pathFileSuratKuasa, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	var tempaset Response
+	tempaset, _ = GetAssetById(strconv.Itoa(tempid))
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil memasukkan data"
+	res.Data = tempaset.Data
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func saveAssetGambar(idAset string, fileHeader *multipart.FileHeader) (string, error) {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	uploadDir := "uploads/asset/foto/"
+	fileHeader.Filename = idAset + "_" + fileHeader.Filename
+	os.MkdirAll(uploadDir, os.ModePerm)
+	filePath := filepath.Join(uploadDir, fileHeader.Filename)
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, file)
+	if err != nil {
+		return "", err
+	}
+
+	return filePath, nil
+}
+
 func CreateAssetChild(
 	filelegalitas *multipart.FileHeader, suratkuasa *multipart.FileHeader, gambar_asset *multipart.FileHeader,
 	parent_id, nama, surat_legalitas, tipe, usage, tag, nomor_legalitas, status,
@@ -484,6 +730,255 @@ func CreateAssetChild(
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
+		return res, err
+	}
+
+	templastid := int(lastId)
+	// update parent jadi punya child
+	if dtAsetChild != "" {
+		dtAsetChild = dtAsetChild + "," + strconv.Itoa(templastid)
+	} else {
+		dtAsetChild = strconv.Itoa(templastid)
+	}
+	queryupdate := "UPDATE asset SET id_asset_child = ? WHERE id_asset = ?"
+	stmtupdate, err := con.Prepare(queryupdate)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtupdate.Close()
+
+	_, err = stmtupdate.Exec(dtAsetChild, parent_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tempaset, err := GetAssetById(_tempid)
+	if err != nil {
+		res.Status = 401
+		res.Message = "get aset by id gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil memasukkan data"
+	res.Data = tempaset
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func CreateAssetChildMultipleGambar(
+	filelegalitas *multipart.FileHeader, suratkuasa *multipart.FileHeader,
+	parent_id, nama, surat_legalitas, tipe, usage, tag, nomor_legalitas, status,
+	alamat, kondisi, koordinat, batas_koordinat, luas, nilai string, files []*multipart.FileHeader) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	usageIds := strings.Split(usage, ",")
+	for _, id := range usageIds {
+		var usageExists bool
+		fmt.Println("usage", id)
+		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
+		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
+		if err != nil || !usageExists {
+			res.Status = 401
+			res.Message = "Penggunaan tidak valid"
+			res.Data = "Penggunaan ID " + id + " tidak ditemukan"
+			return res, err
+		}
+	}
+
+	tagIds := strings.Split(tag, ",")
+	for _, id2 := range tagIds {
+		var tagExists bool
+		fmt.Println("tag", id2)
+		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
+		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
+		if err != nil || !tagExists {
+			res.Status = 401
+			res.Message = "Tag tidak valid"
+			res.Data = "Tag ID " + id2 + " tidak ditemukan"
+			return res, err
+		}
+	}
+
+	// ambil parent aset + dt provinsi
+	var dtProvinsi string
+	var dtAsetChild string
+	ParentQuery := "SELECT provinsi,IFNULL(id_asset_child,'') FROM asset WHERE id_asset = ?"
+	err = con.QueryRow(ParentQuery, parent_id).Scan(&dtProvinsi, &dtAsetChild)
+	if err != nil || (dtProvinsi == "") {
+		res.Status = 401
+		res.Message = "provinsi tidak valid"
+		res.Data = "Aset ID " + parent_id + " tidak ditemukan"
+		return res, err
+	}
+
+	// query := `
+	// INSERT INTO asset (id_asset_parent,perusahaan_id, nama, tipe, nomor_legalitas, status_asset, surat_legalitas, alamat,
+	// kondisi, titik_koordinat, batas_koordinat, luas, nilai, provinsi, created_at)
+	// VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+	// `
+	query := `
+	INSERT INTO asset (id_asset_parent, nama, tipe, nomor_legalitas, status_asset, surat_legalitas, alamat, 
+	kondisi, titik_koordinat, batas_koordinat, luas, nilai, provinsi, created_at) 
+	VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	// result, err := stmt.Exec(
+	// 	parent_id, perusahaan_id, nama, tipe, nomor_legalitas, status, surat_legalitas, alamat, kondisi, koordinat, batas_koordinat,
+	// 	luas, nilai, provinsi)
+	result, err := stmt.Exec(
+		parent_id, nama, tipe, nomor_legalitas, status, surat_legalitas, alamat, kondisi, koordinat, batas_koordinat,
+		luas, nilai, dtProvinsi)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	lastId, err := result.LastInsertId()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+
+	filePaths := []string{}
+	for _, fileHeader := range files {
+		filePath, err := saveAssetGambar(strconv.Itoa(int(lastId)), fileHeader)
+		if err != nil {
+			res.Status = 500
+			res.Message = "Error saving file"
+			res.Data = err.Error()
+			return res, err
+		}
+		filePaths = append(filePaths, filePath)
+	}
+
+	for _, filePath := range filePaths {
+		// Prepare the INSERT statement for each filePath
+		insertImageQuery := "INSERT INTO asset_gambar (id_asset_gambar, link_gambar) VALUES (?, ?)"
+		_, err = con.Exec(insertImageQuery, strconv.Itoa(int(lastId)), filePath)
+		if err != nil {
+			// Handle the error if the insert fails
+			res.Status = 500
+			res.Message = "Error inserting image path"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	// tambah usage + tags
+	for _, usageId := range usageIds {
+		usageQuery := "INSERT INTO asset_penggunaan (id_asset, id_penggunaan) VALUES (?, ?)"
+		_, err = con.Exec(usageQuery, lastId, usageId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Gagal menambah penggunaan"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	for _, tagId := range tagIds {
+		tagQuery := "INSERT INTO asset_tags (id_asset, id_tags) VALUES (?, ?)"
+		_, err = con.Exec(tagQuery, lastId, tagId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Gagal menambah tag"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+
+	// tambah filelegalitas
+	//source
+	srclegalitas, err := filelegalitas.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srclegalitas.Close()
+
+	tempid := int(lastId)
+	_tempid := strconv.Itoa(tempid)
+	// Destination
+	filelegalitas.Filename = _tempid + "_" + filelegalitas.Filename
+	pathFileLegalitas := "uploads/asset/file_legalitas/" + filelegalitas.Filename
+	dstlegalitas, err := os.Create("uploads/asset/file_legalitas/" + filelegalitas.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstlegalitas, srclegalitas); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstlegalitas.Close()
+
+	err = UpdateDataFotoPath("asset", "file_legalitas", pathFileLegalitas, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	// tambah suratkuasa
+	//source
+	srcsuratkuasa, err := suratkuasa.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcsuratkuasa.Close()
+
+	// Destination
+	suratkuasa.Filename = _tempid + "_" + suratkuasa.Filename
+	pathFileSuratKuasa := "uploads/asset/surat_kuasa/" + suratkuasa.Filename
+	dstsuratkuasa, err := os.Create("uploads/asset/surat_kuasa/" + suratkuasa.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstsuratkuasa, srcsuratkuasa); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstsuratkuasa.Close()
+
+	err = UpdateDataFotoPath("asset", "surat_kuasa", pathFileSuratKuasa, "id_asset", int(lastId))
+	if err != nil {
 		return res, err
 	}
 
@@ -2320,6 +2815,319 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 	return res, nil
 }
 
+func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.FileHeader,
+	id_asset, nama, surat_legalitas, tipe, usage, tag, nomor_legalitas, status,
+	alamat, kondisi, koordinat, batas_koordinat, luas, nilai, provinsi string, files []*multipart.FileHeader) (Response, error) {
+	var res Response
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	usageIds := strings.Split(usage, ",")
+	for _, id := range usageIds {
+		var usageExists bool
+		fmt.Println("usage", id)
+		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
+		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
+		if err != nil || !usageExists {
+			res.Status = 401
+			res.Message = "Penggunaan tidak valid"
+			res.Data = "Penggunaan ID " + id + " tidak ditemukan"
+			return res, err
+		}
+	}
+
+	tagIds := strings.Split(tag, ",")
+	for _, id2 := range tagIds {
+		var tagExists bool
+		fmt.Println("tag", id2)
+		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
+		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
+		if err != nil || !tagExists {
+			res.Status = 401
+			res.Message = "Tag tidak valid"
+			res.Data = "Tag ID " + id2 + " tidak ditemukan"
+			return res, err
+		}
+	}
+
+	// hapus file legalitas + surat kuasa kalau ada + gambar aset
+	linkasetQueue := `
+	SELECT a.file_legalitas, a.surat_kuasa, ag.link_gambar
+	FROM asset a
+	LEFT JOIN asset_gambar ag ON a.id_asset = ag.id_asset_gambar
+	WHERE a.id_asset = ?
+`
+	var linkfilelegalitas string
+	var linksuratkuasa string
+	var linkGambar string
+	var existingImages []string
+
+	rows, err := con.Query(linkasetQueue, id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		err = rows.Scan(&linkfilelegalitas, &linksuratkuasa, &linkGambar)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		// Collect existing image links
+		if linkGambar != "" {
+			existingImages = append(existingImages, linkGambar)
+		}
+	}
+	err = os.Remove(linkfilelegalitas)
+	if err != nil {
+		return res, err
+	}
+	err = os.Remove(linksuratkuasa)
+	if err != nil {
+		return res, err
+	}
+
+	for _, deleteFile := range existingImages {
+		err = os.Remove(deleteFile)
+		if err != nil {
+			return res, err
+		}
+	}
+	deleteImagesQuery := "DELETE FROM asset_gambar WHERE id_asset_gambar = ?"
+	_, err = con.Exec(deleteImagesQuery, id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Delete gambar exec gagal"
+		res.Data = "Delete gambar exec gagal dengan id aset " + id_asset
+		return res, err
+	}
+
+	// hapus tags dan usage di db
+	tagQuery := "DELETE FROM `asset_tags` WHERE id_asset = ?"
+	_, err = con.Exec(tagQuery, id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Delete tag exec gagal"
+		res.Data = "Delete tag exec gagal dengan id aset " + id_asset
+		return res, err
+	}
+	usageQuery := "DELETE FROM `asset_penggunaan` WHERE id_asset = ?"
+	_, err = con.Exec(usageQuery, id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Delete usage exec gagal"
+		res.Data = "Delete usage exec gagal dengan id aset " + id_asset
+		return res, err
+	}
+
+	fmt.Println("query update")
+	query := `
+	UPDATE asset 
+	SET nama = ?, tipe = ?, nomor_legalitas = ?, status_asset = ?, surat_legalitas = ?, alamat = ?, kondisi = ?, titik_koordinat = ?,
+	batas_koordinat = ?, luas = ?, nilai = ?, provinsi = ?
+	WHERE id_asset = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(
+		nama, tipe, nomor_legalitas, status, surat_legalitas, alamat, kondisi, koordinat, batas_koordinat, luas, nilai, provinsi, id_asset,
+	)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// insert gambar
+
+	// ambil foto aset dan hapus
+	filePaths := []string{}
+	for _, fileHeader := range files {
+		filePath, err := updateAssetGambar(id_asset, fileHeader)
+		if err != nil {
+			res.Status = 500
+			res.Message = "Error saving file"
+			res.Data = err.Error()
+			return res, err
+		}
+		filePaths = append(filePaths, filePath)
+	}
+
+	for _, filePath := range filePaths {
+		// Prepare the INSERT statement for each filePath
+		insertImageQuery := "INSERT INTO asset_gambar (id_asset_gambar, link_gambar) VALUES (?, ?)"
+		_, err = con.Exec(insertImageQuery, id_asset, filePath)
+		if err != nil {
+			// Handle the error if the insert fails
+			res.Status = 500
+			res.Message = "Error inserting image path"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+	fmt.Println("tambah usage")
+
+	// tambah usage + tags
+	for _, usageId := range usageIds {
+		usageQuery := "INSERT INTO asset_penggunaan (id_asset, id_penggunaan) VALUES (?, ?)"
+		fmt.Println("usage id: ", id_asset, usageId)
+		_, err = con.Exec(usageQuery, id_asset, usageId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Gagal menambah penggunaan"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+	fmt.Println("tambah tags")
+
+	for _, tagId := range tagIds {
+		tagQuery := "INSERT INTO asset_tags (id_asset, id_tags) VALUES (?, ?)"
+		_, err = con.Exec(tagQuery, id_asset, tagId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Gagal menambah tag"
+			res.Data = err.Error()
+			return res, err
+		}
+	}
+	fmt.Println("tambah file legalitas")
+
+	// tambah filelegalitas
+	//source
+	srclegalitas, err := filelegalitas.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srclegalitas.Close()
+
+	// Destination
+	filelegalitas.Filename = id_asset + "_" + filelegalitas.Filename
+	pathFileLegalitas := "uploads/asset/file_legalitas/" + filelegalitas.Filename
+	dstlegalitas, err := os.Create("uploads/asset/file_legalitas/" + filelegalitas.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstlegalitas, srclegalitas); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstlegalitas.Close()
+
+	lastId, err := strconv.Atoi(id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal konversi string"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	err = UpdateDataFotoPath("asset", "file_legalitas", pathFileLegalitas, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	// tambah suratkuasa
+	//source
+	srcsuratkuasa, err := suratkuasa.Open()
+	if err != nil {
+		log.Println(err.Error())
+		return res, err
+	}
+	defer srcsuratkuasa.Close()
+
+	// Destination
+	suratkuasa.Filename = id_asset + "_" + suratkuasa.Filename
+	pathFileSuratKuasa := "uploads/asset/surat_kuasa/" + suratkuasa.Filename
+	dstsuratkuasa, err := os.Create("uploads/asset/surat_kuasa/" + suratkuasa.Filename)
+	if err != nil {
+		log.Println("2")
+		fmt.Print("2")
+		return res, err
+	}
+
+	// Copy
+	if _, err = io.Copy(dstsuratkuasa, srcsuratkuasa); err != nil {
+		log.Println(err.Error())
+		log.Println("3")
+		fmt.Print("3")
+		return res, err
+	}
+	dstsuratkuasa.Close()
+
+	err = UpdateDataFotoPath("asset", "surat_kuasa", pathFileSuratKuasa, "id_asset", int(lastId))
+	if err != nil {
+		return res, err
+	}
+
+	tempaset, err := GetAssetById(id_asset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "get aset by id gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil memasukkan data"
+	res.Data = tempaset
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func updateAssetGambar(idAset string, fileHeader *multipart.FileHeader) (string, error) {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	uploadDir := "uploads/asset/foto/"
+	fileHeader.Filename = idAset + "_" + fileHeader.Filename
+	os.MkdirAll(uploadDir, os.ModePerm)
+	filePath := filepath.Join(uploadDir, fileHeader.Filename)
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, file)
+	if err != nil {
+		return "", err
+	}
+
+	return filePath, nil
+}
+
 func UnjoinAsset(asetId string) (Response, error) {
 	var res Response
 
@@ -2596,6 +3404,31 @@ func FilterAsset(input string) (Response, error) {
 		} else {
 			dtAset.Provinsi = 0
 		}
+
+		gambarQuery := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
+		rows, err := con.Query(gambarQuery, dtAset.Id_asset)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal mengambil gambar"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer rows.Close()
+
+		var gambarLinks []string
+		for rows.Next() {
+			var link string
+			err := rows.Scan(&link)
+			if err != nil {
+				res.Status = 401
+				res.Message = "gagal membaca gambar"
+				res.Data = err.Error()
+				return res, err
+			}
+			gambarLinks = append(gambarLinks, link)
+		}
+		dtAset.LinkGambar = gambarLinks
+
 		assets = append(assets, dtAset)
 	}
 

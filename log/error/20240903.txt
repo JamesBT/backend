@@ -1,0 +1,1 @@
+<2024-09-03 12:07:27>|| {REQUEST: uri: /perusahaan/tranreq/user/2, status: 404, ip:103.50.129.73, Host:leap.crossnet.co.id:1762, ContentLength:, User-Agent:Dart/3.4 (dart:io), Error:code=404, message=Not Found, Latency:1.53µs, method:GET ,Protocol:HTTP/1.1, RequestId:, ResponseSize:0, custom-value: 42}

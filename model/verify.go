@@ -90,8 +90,9 @@ func VerifyUserAccept(input string) (Response, error) {
 	var res Response
 
 	type temp_verif_user_acc struct {
-		UserID int `json:"userid"`
-		Kelas  int `json:"kelas"`
+		SenderId int `json:"senderid"`
+		UserID   int `json:"userid"`
+		Kelas    int `json:"kelas"`
 	}
 	var requestacc temp_verif_user_acc
 	err := json.Unmarshal([]byte(input), &requestacc)
@@ -128,6 +129,27 @@ func VerifyUserAccept(input string) (Response, error) {
 		return res, err
 	}
 
+	title := "You're accepted!"
+	detail := "Your request as user has been accepted"
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": 0,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, requestacc.SenderId, requestacc.UserID, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
 	res.Data = result
@@ -141,6 +163,8 @@ func VerifyPerusahaanAccept(input string) (Response, error) {
 
 	type temp_verif_perusahaan_acc struct {
 		PerusahaanId int    `json:"perusahaan_id"`
+		SenderId     int    `json:"senderId"`
+		UserId       int    `json:"userId"`
 		Kelas        int    `json:"kelas"`
 		Field        string `json:"business_field"`
 	}
@@ -220,6 +244,48 @@ func VerifyPerusahaanAccept(input string) (Response, error) {
 		return res, err
 	}
 
+	selectUserQuery := `
+	SELECT id_user
+	FROM user_perusahaan
+	WHERE id_perusahaan = ?`
+	stmtSelect, err := con.Prepare(selectUserQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtSelect.Close()
+
+	err = stmtSelect.QueryRow(requestacc.PerusahaanId).Scan(&requestacc.UserId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	title := "Your company request has been accepted!"
+	detail := ""
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": %d,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, requestacc.SenderId, requestacc.UserId, requestacc.PerusahaanId, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
 	res.Data = result
@@ -232,7 +298,8 @@ func VerifyUserDecline(input string) (Response, error) {
 	var res Response
 
 	type temp_verif_user_deny struct {
-		UserID int `json:"userid"`
+		UserID   int `json:"userid"`
+		SenderId int `json:"senderId"`
 	}
 	var requestacc temp_verif_user_deny
 	err := json.Unmarshal([]byte(input), &requestacc)
@@ -271,6 +338,27 @@ func VerifyUserDecline(input string) (Response, error) {
 
 	// kirim notif (masih mendatang)
 
+	title := "You're declined!"
+	detail := "Your request as user has been declined"
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": 0,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, requestacc.SenderId, requestacc.UserID, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
 	res.Data = result
@@ -284,6 +372,8 @@ func VerifyPerusahaanDecline(input string) (Response, error) {
 
 	type temp_verif_perusahaan_deny struct {
 		PerusahaanId int    `json:"perusahaan_id"`
+		SenderId     int    `json:"senderId"`
+		UserId       int    `json:"userId"`
 		Alasan       string `json:"decline_message"`
 	}
 	var requestacc temp_verif_perusahaan_deny
@@ -322,6 +412,47 @@ func VerifyPerusahaanDecline(input string) (Response, error) {
 	}
 
 	// kirim notif (masih mendatang)
+	selectUserQuery := `
+	SELECT id_user
+	FROM user_perusahaan
+	WHERE id_perusahaan = ?`
+	stmtSelect, err := con.Prepare(selectUserQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtSelect.Close()
+
+	err = stmtSelect.QueryRow(requestacc.PerusahaanId).Scan(&requestacc.UserId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	title := "Your company request has been declined!"
+	detail := ""
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": 0,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, requestacc.SenderId, requestacc.UserId, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
 
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
@@ -457,6 +588,8 @@ func VerifyAssetAccept(input string) (Response, error) {
 
 	type temp_verif_asset_acc struct {
 		SurveryReqId int `json:"surveyreq_id"`
+		SenderId     int `json:"senderId"`
+		UserId       int `json:"userId"`
 	}
 
 	var requestacc temp_verif_asset_acc
@@ -494,7 +627,7 @@ func VerifyAssetAccept(input string) (Response, error) {
 		return res, err
 	}
 
-	selectquery := "SELECT id_asset,usage_new,luas_new,nilai_new,kondisi_new,titik_koordinat_new,batas_koordinat_new,tags_new,gambar_new FROM survey_request WHERE id_transaksi_jual_sewa = ?"
+	selectquery := "SELECT id_asset,usage_new,luas_new,nilai_new,kondisi_new,titik_koordinat_new,batas_koordinat_new,tags_new,gambar_new,user_id FROM survey_request WHERE id_transaksi_jual_sewa = ?"
 	selectstmt, err := con.Prepare(selectquery)
 	if err != nil {
 		res.Status = 401
@@ -506,7 +639,7 @@ func VerifyAssetAccept(input string) (Response, error) {
 	var usage_new, luas_new, nilai_new, kondisi_new, titik_koordinat_new, batas_koordinat_new, tags_new, gambar_new sql.NullString
 
 	err = selectstmt.QueryRow(requestacc.SurveryReqId).Scan(
-		&dtSurveyReq.Id_asset, &usage_new, &luas_new, &nilai_new, &kondisi_new, &titik_koordinat_new, &batas_koordinat_new, &tags_new, &gambar_new,
+		&dtSurveyReq.Id_asset, &usage_new, &luas_new, &nilai_new, &kondisi_new, &titik_koordinat_new, &batas_koordinat_new, &tags_new, &gambar_new, &requestacc.UserId,
 	)
 	if err != nil {
 		res.Status = 401
@@ -746,6 +879,27 @@ func VerifyAssetAccept(input string) (Response, error) {
 		}
 	}
 
+	title := "Your assignment has been accepted!"
+	detail := ""
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": 0,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, requestacc.SenderId, requestacc.UserId, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	tempaset, _ := GetAssetById(strconv.Itoa(dtSurveyReq.Id_asset))
 
 	res.Status = http.StatusOK
@@ -763,6 +917,7 @@ func ReassignAsset(input string) (Response, error) {
 		SurveyReqId int    `json:"surveyreq_id"`
 		SurveyorId  int    `json:"user_id"`
 		Dateline    string `json:"dateline"`
+		SenderId    int    `json:"senderId"`
 	}
 
 	var requestacc temp_verif_asset_acc
@@ -785,7 +940,7 @@ func ReassignAsset(input string) (Response, error) {
 	}
 
 	// ambil user id dari surveyor
-	surveyorquery := "SELECT user_id FROM surveyor WHERE `user_id` = ?"
+	surveyorquery := "SELECT user_id FROM surveyor WHERE `user_id` = ? "
 	surveyorstmt, err := con.Prepare(surveyorquery)
 	if err != nil {
 		res.Status = 401
@@ -806,7 +961,7 @@ func ReassignAsset(input string) (Response, error) {
 	fmt.Println(requestacc.SurveyorId)
 	fmt.Println(_tempuserid)
 
-	query := "UPDATE survey_request SET `user_id`=?,`dateline`=?,`status_request`='O',`status_submitted`='N' WHERE id_transaksi_jual_sewa = ?"
+	query := "UPDATE survey_request SET `user_id`=?,`dateline`=?,`status_request`='O',`status_submitted`='N',`status_verifikasi`='R' WHERE id_transaksi_jual_sewa = ?"
 	stmt2, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -824,6 +979,50 @@ func ReassignAsset(input string) (Response, error) {
 		return res, err
 	}
 
+	assetquery := `
+	SELECT a.nama 
+	FROM survey_request sr
+	LEFT JOIN asset a ON sr.id_asset = a.id_asset
+	WHERE sr.id_transaksi_jual_sewa = ? `
+	assetstmt, err := con.Prepare(assetquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer assetstmt.Close()
+
+	var tempNamaAsset string
+	err = assetstmt.QueryRow(requestacc.SurveyReqId).Scan(&tempNamaAsset)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengambil user_id"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	title := "You’ve got a new assignment!"
+	detail := fmt.Sprintf("Please do a survey on : %s", tempNamaAsset)
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": 0,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, requestacc.SenderId, _tempuserid, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
 	res.Data = result
@@ -835,14 +1034,16 @@ func ReassignAsset(input string) (Response, error) {
 func AcceptTransaction(input string) (Response, error) {
 	var res Response
 	type TranReqStatus struct {
-		Id           int    `json:"id"`
-		UserId       int    `json:"userId"`
-		PerusahaanId int    `json:"perusahaanId"`
-		AssetId      int    `json:"assetId"`
-		AssetNama    string `json:"assetNama"`
-		NamaProgress string `json:"namaProgress"`
-		Proposal     string `json:"proposal"`
-		Alasan       string `json:"alasan"`
+		Id             int    `json:"id"`
+		UserId         int    `json:"userId"`
+		SenderId       int    `json:"senderId"`
+		PerusahaanId   int    `json:"perusahaanId"`
+		PerusahaanNama string `json:"perusahaanNama"`
+		AssetId        int    `json:"assetId"`
+		AssetNama      string `json:"assetNama"`
+		NamaProgress   string `json:"namaProgress"`
+		Proposal       string `json:"proposal"`
+		Alasan         string `json:"alasan"`
 	}
 
 	var tempTranReq TranReqStatus
@@ -885,12 +1086,15 @@ func AcceptTransaction(input string) (Response, error) {
 	}
 
 	getProgressAndAssetQuery := `
-	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama 
+	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama, p.name
 	FROM transaction_request tr
 	LEFT JOIN asset a ON tr.id_asset = a.id_asset
+	LEFT JOIN perusahaan p ON tr.perusahaan_id = p.perusahaan_id
 	WHERE tr.id_transaksi_jual_sewa = ?
 	`
-	err = con.QueryRow(getProgressAndAssetQuery, tempTranReq.Id).Scan(&tempTranReq.AssetId, &tempTranReq.UserId, &tempTranReq.PerusahaanId, &tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama)
+	err = con.QueryRow(getProgressAndAssetQuery, tempTranReq.Id).Scan(
+		&tempTranReq.AssetId, &tempTranReq.UserId, &tempTranReq.PerusahaanId,
+		&tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama)
 	if err != nil {
 		res.Status = 401
 		res.Message = "Gagal mengambil nama_progress, proposal, dan nama asset"
@@ -919,6 +1123,27 @@ func AcceptTransaction(input string) (Response, error) {
 		return res, err
 	}
 
+	title := fmt.Sprintf("Your transaction request for %s has been ACCEPTED", tempTranReq.PerusahaanNama)
+	detail := ""
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": %d,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, tempTranReq.SenderId, tempTranReq.UserId, tempTranReq.PerusahaanId, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
 	res.Data = nil
@@ -930,14 +1155,16 @@ func AcceptTransaction(input string) (Response, error) {
 func DeclineTransaction(input string) (Response, error) {
 	var res Response
 	type TranReqStatus struct {
-		Id           int    `json:"id"`
-		UserId       int    `json:"userId"`
-		PerusahaanId int    `json:"perusahaanId"`
-		AssetId      int    `json:"assetId"`
-		AssetNama    string `json:"assetNama"`
-		NamaProgress string `json:"namaProgress"`
-		Proposal     string `json:"proposal"`
-		Alasan       string `json:"alasan"`
+		Id             int    `json:"id"`
+		UserId         int    `json:"userId"`
+		SenderId       int    `json:"senderId"`
+		PerusahaanId   int    `json:"perusahaanId"`
+		PerusahaanNama string `json:"perusahaanNama"`
+		AssetId        int    `json:"assetId"`
+		AssetNama      string `json:"assetNama"`
+		NamaProgress   string `json:"namaProgress"`
+		Proposal       string `json:"proposal"`
+		Alasan         string `json:"alasan"`
 	}
 
 	var tempTranReq TranReqStatus
@@ -983,9 +1210,13 @@ func DeclineTransaction(input string) (Response, error) {
 	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama 
 	FROM transaction_request tr
 	LEFT JOIN asset a ON tr.id_asset = a.id_asset
+	LEFT JOIN perusahaan p ON tr.perusahaan_id = p.perusahaan_id
 	WHERE tr.id_transaksi_jual_sewa = ?
 	`
-	err = con.QueryRow(getProgressAndAssetQuery, tempTranReq.Id).Scan(&tempTranReq.AssetId, &tempTranReq.UserId, &tempTranReq.PerusahaanId, &tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama)
+	err = con.QueryRow(getProgressAndAssetQuery, tempTranReq.Id).Scan(
+		&tempTranReq.AssetId, &tempTranReq.UserId, &tempTranReq.PerusahaanId,
+		&tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama,
+		&tempTranReq.PerusahaanId)
 	if err != nil {
 		res.Status = 401
 		res.Message = "Gagal mengambil nama_progress, proposal, dan nama asset"
@@ -1010,6 +1241,27 @@ func DeclineTransaction(input string) (Response, error) {
 	if err != nil {
 		res.Status = 401
 		res.Message = "Gagal memasukkan data ke progress"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	title := fmt.Sprintf("Your transaction request for %s has been DECLINED", tempTranReq.PerusahaanNama)
+	detail := ""
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": %d,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, tempTranReq.SenderId, tempTranReq.UserId, tempTranReq.PerusahaanId, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
 		res.Data = err.Error()
 		return res, err
 	}
@@ -1066,6 +1318,7 @@ func GetAllVerify() (Response, error) {
 	FROM perusahaan p
 	LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
 	LEFT JOIN user u ON up.id_user = u.user_id
+	GROUP BY p.perusahaan_id
 	ORDER BY p.created_at DESC`
 	stmtPerusahaan, err := con.Prepare(queryPerusahaan)
 	if err != nil {

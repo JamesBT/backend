@@ -17,7 +17,7 @@ import (
 )
 
 // CRUD survey_request ============================================================================
-func CreateSurveyReq(surat *multipart.FileHeader, user_id, id_asset, dateline string) (Response, error) {
+func CreateSurveyReq(surat *multipart.FileHeader, sender_id, user_id, id_asset, dateline string) (Response, error) {
 	var res Response
 	var dtSurveyReq = SurveyRequest{}
 
@@ -60,7 +60,7 @@ func CreateSurveyReq(surat *multipart.FileHeader, user_id, id_asset, dateline st
 	fmt.Println("ambil data tags dan usage")
 
 	// ambil data aset dan update bagian lama
-	var nilai, kondisi, batas_koordinat, titik_koordinat string
+	var nama, nilai, kondisi, batas_koordinat, titik_koordinat string
 	var luas float64
 	var tags []string
 	var usages []string
@@ -104,8 +104,8 @@ func CreateSurveyReq(surat *multipart.FileHeader, user_id, id_asset, dateline st
 	tagsString := strings.Join(tags, ", ")
 	usagesString := strings.Join(usages, ", ")
 
-	queryGETasset := "SELECT luas, nilai, kondisi, batas_koordinat, titik_koordinat FROM asset WHERE id_asset = ?"
-	err = con.QueryRow(queryGETasset, id_asset).Scan(&luas, &nilai, &kondisi, &batas_koordinat, &titik_koordinat)
+	queryGETasset := "SELECT nama, luas, nilai, kondisi, batas_koordinat, titik_koordinat FROM asset WHERE id_asset = ?"
+	err = con.QueryRow(queryGETasset, id_asset).Scan(&nama, &luas, &nilai, &kondisi, &batas_koordinat, &titik_koordinat)
 	if err != nil {
 		res.Status = 401
 		res.Message = "query gagal"
@@ -183,8 +183,29 @@ func CreateSurveyReq(surat *multipart.FileHeader, user_id, id_asset, dateline st
 		return res, err
 	}
 
+	title := "You’ve got a new assignment!"
+	detail := fmt.Sprintf("Please do a survey on : %s", nama)
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": %d,
+		"perusahaan_id_receiver": 0,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, sender_id, user_id, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	res.Status = http.StatusOK
-	res.Message = "Berhasil memasukkan data"
+	res.Message = "Berhasil membuat penugasan survei"
 	res.Data = dtSurveyReq
 
 	defer db.DbClose(con)
@@ -1163,7 +1184,7 @@ func SubmitSurveyReqByIdWithFile(id int, usage string, luas, nilai float64, kond
 		Titik_koordinat string   `json:"titik_koordinat"`
 		Batas_koordinat string   `json:"batas_koordinat"`
 		Tags            string   `json:"tags"`
-		Files           []string `json:"files"` // Add a field to store file paths
+		Files           []string `json:"files"`
 	}
 
 	var tempsubmitsurveyreq TempSubmitSurveyReq
@@ -1226,7 +1247,6 @@ func SubmitSurveyReqByIdWithFile(id int, usage string, luas, nilai float64, kond
 	tempsubmitsurveyreq.Titik_koordinat = titik_koordinat
 	tempsubmitsurveyreq.Batas_koordinat = batas_koordinat
 	tempsubmitsurveyreq.Tags = tags
-	tempsubmitsurveyreq.Files = filePaths
 
 	// Convert file paths to a string to store in the DB (comma-separated or JSON)
 	filesStr := strings.Join(filePaths, ",")
@@ -1883,6 +1903,7 @@ func UserManagementGetMeetingByUserId(user_id string) (Response, error) {
 
 func UserManagementGetMeetingByPerusahaanId(perusahaan_id string) (Response, error) {
 	var res Response
+	fmt.Println("GET MEETING BY PERUSAHAAN ID")
 	var assetsMap = make(map[int][]Progress)
 	var grupAsset []GrupAsset
 
@@ -1934,28 +1955,25 @@ func UserManagementGetMeetingByPerusahaanId(perusahaan_id string) (Response, err
 		return res, err
 	}
 
+	fmt.Println(assetsMap)
+
 	for assetId, progressList := range assetsMap {
-		grupAsset = append(grupAsset, GrupAsset{
-			Id_asset:       assetId,
-			Asset_name:     progressList[0].Nama_asset,
-			User_id:        progressList[0].User_id,
-			Perusahaan_id:  progressList[0].Perusahaan_id,
-			Semua_progress: []Progress{},
-		})
-		for _, prog := range progressList {
-			grupAsset[len(grupAsset)-1].Semua_progress = append(grupAsset[len(grupAsset)-1].Semua_progress, Progress{
-				Id:                    prog.Id,
-				Status:                prog.Status,
-				Nama:                  prog.Nama,
-				Proposal:              prog.Proposal,
-				Tanggal_meeting:       prog.Tanggal_meeting,
-				Waktu_meeting:         prog.Waktu_meeting,
-				Tempat_meeting:        prog.Tempat_meeting,
-				Waktu_mulai_meeting:   prog.Waktu_mulai_meeting,
-				Waktu_selesai_meeting: prog.Waktu_selesai_meeting,
-				Notes:                 prog.Notes,
-				Dokumen:               prog.Dokumen,
-				Tipe_dokumen:          prog.Tipe_dokumen,
+		exists := false
+		for i := range grupAsset {
+			if grupAsset[i].Id_asset == assetId {
+				grupAsset[i].Semua_progress = append(grupAsset[i].Semua_progress, progressList...)
+				exists = true
+				break
+			}
+		}
+		// If not, create a new GrupAsset entry
+		if !exists {
+			grupAsset = append(grupAsset, GrupAsset{
+				Id_asset:       assetId,
+				Asset_name:     progressList[0].Nama_asset,
+				User_id:        progressList[0].User_id,
+				Perusahaan_id:  progressList[0].Perusahaan_id,
+				Semua_progress: progressList,
 			})
 		}
 	}
@@ -2065,6 +2083,47 @@ func CreateMeeting(dokumen *multipart.FileHeader, id, tanggal_meeting, waktu_mee
 		return res, err
 	}
 
+	selectQuery := `
+		SELECT user_id, perusahaan_id FROM progress WHERE id = ?
+	`
+	stmtSelect, err := con.Prepare(selectQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtSelect.Close()
+
+	err = stmtSelect.QueryRow(dtMeeting.Id).Scan(&dtMeeting.User_id, &dtMeeting.Perusahaan_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	title := fmt.Sprintf("A new meeting for company %s has been set", dtMeeting.Perusahaan_id)
+	detail := ""
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": 0,
+		"perusahaan_id_receiver": %d,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, dtMeeting.User_id, dtMeeting.Perusahaan_id, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil memasukkan data"
 	res.Data = dtMeeting
@@ -2126,6 +2185,47 @@ func CreateMeetingWithoutDocument(id, tanggal_meeting, waktu_meeting, tempat_mee
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	selectQuery := `
+		SELECT user_id, perusahaan_id FROM progress WHERE id = ?
+	`
+	stmtSelect, err := con.Prepare(selectQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtSelect.Close()
+
+	err = stmtSelect.QueryRow(dtMeeting.Id).Scan(&dtMeeting.User_id, &dtMeeting.Perusahaan_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	title := fmt.Sprintf("A new meeting for company %s has been set", dtMeeting.Perusahaan_id)
+	detail := ""
+
+	testingString := fmt.Sprintf(`
+	{
+		"user_id_sender": %d,
+		"user_id_receiver": 0,
+		"perusahaan_id_receiver": %d,
+		"notification_title": "%s",
+		"notification_detail": "%s"
+	}
+	`, dtMeeting.User_id, dtMeeting.Perusahaan_id, title, detail)
+
+	res, err = CreateNotification(testingString)
+	if err != nil {
+		res.Status = 401
+		res.Message = "kirim notifikasi gagal"
 		res.Data = err.Error()
 		return res, err
 	}

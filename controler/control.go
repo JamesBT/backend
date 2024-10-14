@@ -51,6 +51,58 @@ func TambahAsset(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func CreateAssetMultipleFile(c echo.Context) error {
+	asetName := c.FormValue("nama")
+	tipe := c.FormValue("tipe")
+	nomorLegalitas := c.FormValue("nomor_legalitas")
+	fileLegalitas, err := c.FormFile("file_legalitas")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	status := c.FormValue("status")
+	suratKuasa, err := c.FormFile("surat_kuasa")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	alamat := c.FormValue("alamat")
+	kondisi := c.FormValue("kondisi")
+	koordinat := c.FormValue("titik_koordinat")
+	batasKoordinat := c.FormValue("batas_koordinat")
+	luas := c.FormValue("luas")
+	nilai := c.FormValue("nilai")
+	provinsi := c.FormValue("provinsi")
+	surat_legalitas := c.FormValue("surat_legalitas")
+	usage := c.FormValue("usage")
+	tags := c.FormValue("tags")
+	var files []*multipart.FileHeader
+	form, err := c.MultipartForm()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Failed to parse multipart form: " + err.Error()})
+	}
+
+	// Get all files associated with the "GambarFile" key
+	uploadedFiles := form.File["GambarFile"]
+	if len(uploadedFiles) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "No files uploaded"})
+	}
+
+	// Add all files to the files slice
+	for _, fileHeader := range uploadedFiles {
+		files = append(files, fileHeader)
+	}
+
+	result, err := model.CreateAssetMultipleFile(
+		fileLegalitas, suratKuasa, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
+		kondisi, koordinat, batasKoordinat, luas, nilai, provinsi, files)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func TambahAssetChild(c echo.Context) error {
 	parentId := c.FormValue("parentId")
 	asetName := c.FormValue("nama")
@@ -81,6 +133,57 @@ func TambahAssetChild(c echo.Context) error {
 	result, err := model.CreateAssetChild(
 		fileLegalitas, suratKuasa, gambar_asset, parentId, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
 		kondisi, koordinat, batasKoordinat, luas, nilai)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func CreateAssetChildMultipleGambar(c echo.Context) error {
+	parentId := c.FormValue("parentId")
+	asetName := c.FormValue("nama")
+	tipe := c.FormValue("tipe")
+	nomorLegalitas := c.FormValue("nomor_legalitas")
+	fileLegalitas, err := c.FormFile("file_legalitas")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	status := c.FormValue("status")
+	suratKuasa, err := c.FormFile("surat_kuasa")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	alamat := c.FormValue("alamat")
+	kondisi := c.FormValue("kondisi")
+	koordinat := c.FormValue("titik_koordinat")
+	batasKoordinat := c.FormValue("batas_koordinat")
+	luas := c.FormValue("luas")
+	nilai := c.FormValue("nilai")
+	surat_legalitas := c.FormValue("surat_legalitas")
+	usage := c.FormValue("usage")
+	tags := c.FormValue("tags")
+	var files []*multipart.FileHeader
+	form, err := c.MultipartForm()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Failed to parse multipart form: " + err.Error()})
+	}
+
+	// Get all files associated with the "GambarFile" key
+	uploadedFiles := form.File["GambarFile"]
+	if len(uploadedFiles) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "No files uploaded"})
+	}
+
+	// Add all files to the files slice
+	for _, fileHeader := range uploadedFiles {
+		files = append(files, fileHeader)
+	}
+	result, err := model.CreateAssetChildMultipleGambar(
+		fileLegalitas, suratKuasa, parentId, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
+		kondisi, koordinat, batasKoordinat, luas, nilai, files)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -255,6 +358,58 @@ func UpdateAssetByIdWithoutGambar(c echo.Context) error {
 	result, err := model.UpdateAssetByIdWithoutGambar(
 		fileLegalitas, suratKuasa, asetId, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
 		kondisi, koordinat, batasKoordinat, luas, nilai, provinsi)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UpdateAssetById(c echo.Context) error {
+	asetId := c.FormValue("id")
+	asetName := c.FormValue("nama")
+	tipe := c.FormValue("tipe")
+	nomorLegalitas := c.FormValue("nomor_legalitas")
+	fileLegalitas, err := c.FormFile("file_legalitas")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	status := c.FormValue("status")
+	suratKuasa, err := c.FormFile("surat_kuasa")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	alamat := c.FormValue("alamat")
+	kondisi := c.FormValue("kondisi")
+	koordinat := c.FormValue("titik_koordinat")
+	batasKoordinat := c.FormValue("batas_koordinat")
+	luas := c.FormValue("luas")
+	nilai := c.FormValue("nilai")
+	surat_legalitas := c.FormValue("surat_legalitas")
+	usage := c.FormValue("usage")
+	tags := c.FormValue("tags")
+	provinsi := c.FormValue("provinsi")
+	var files []*multipart.FileHeader
+	form, err := c.MultipartForm()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Failed to parse multipart form: " + err.Error()})
+	}
+
+	// Get all files associated with the "GambarFile" key
+	uploadedFiles := form.File["GambarFile"]
+	if len(uploadedFiles) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "No files uploaded"})
+	}
+
+	// Add all files to the files slice
+	for _, fileHeader := range uploadedFiles {
+		files = append(files, fileHeader)
+	}
+	result, err := model.UpdateAssetById(
+		fileLegalitas, suratKuasa, asetId, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
+		kondisi, koordinat, batasKoordinat, luas, nilai, provinsi, files)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -704,16 +859,31 @@ func ChangeAvailability(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func UpdateLokasiSurveyor(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.UpdateLokasiSurveyor(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 // survey_request
 func CreateSurveyReq(c echo.Context) error {
 	idAsset := c.FormValue("idAsset")
+	idSender := c.FormValue("idSender")
 	idUser := c.FormValue("idUser")
 	dateline := c.FormValue("dateline")
 	surat, err := c.FormFile("surat")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
-	result, err := model.CreateSurveyReq(surat, idUser, idAsset, dateline)
+	result, err := model.CreateSurveyReq(surat, idSender, idUser, idAsset, dateline)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -855,16 +1025,6 @@ func SubmitSurveyReqByIdWithFile(c echo.Context) error {
 		files = append(files, fileHeader)
 	}
 
-	// fmt.Println("SUBMIT SURVEY REQ + FILESSSSSSS")
-	// fmt.Println("id: ", id)
-	// fmt.Println("usage: ", usage)
-	// fmt.Println("luas: ", luas)
-	// fmt.Println("nilai: ", nilai)
-	// fmt.Println("kondisi: ", kondisi)
-	// fmt.Println("titik: ", titik_koordinat)
-	// fmt.Println("batas: ", batas_koordinat)
-	// fmt.Println("tagas: ", tags)
-	// fmt.Println("file: ", files)
 	// Call the model function and pass files along with other parameters
 	result, err := model.SubmitSurveyReqByIdWithFile(id, usage, luas, nilai, kondisi, titik_koordinat, batas_koordinat, tags, files)
 	if err != nil {
@@ -877,7 +1037,6 @@ func SubmitSurveyReqByIdWithFile(c echo.Context) error {
 
 	// Return success response
 	return c.JSON(http.StatusOK, result)
-	// return c.JSON(http.StatusOK, nil)
 }
 
 // transaction_request
@@ -1296,6 +1455,16 @@ func GetAllRoleAdmin(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func GetAllPrivAdmin(c echo.Context) error {
+	result, err := model.GetAllPrivAdmin()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func GetAllPrivRole(c echo.Context) error {
 	result, err := model.GetAllPrivRole()
 	if err != nil {
@@ -1367,6 +1536,20 @@ func EditPrivRoleByPerusahaanId(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func EditRoleUserByPerusahaanId(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.EditRoleUserByPerusahaanId(string(input))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func GetAllPrivRoleByPerusahaanId(c echo.Context) error {
 	id_perusahaan := c.Param("id")
 	result, err := model.GetAllPrivRoleByPerusahaanId(id_perusahaan)
@@ -1382,6 +1565,18 @@ func DeleteRoleByPerusahaanId(c echo.Context) error {
 	id_perusahaan := c.Param("id")
 	id_role := c.Param("id_role")
 	result, err := model.DeleteRoleByPerusahaanId(id_perusahaan, id_role)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func DeleteUserByPerusahaanId(c echo.Context) error {
+	id_perusahaan := c.Param("id")
+	id_user := c.Param("id_user")
+	result, err := model.DeleteUserByPerusahaanId(id_perusahaan, id_user)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 	}
@@ -1813,4 +2008,28 @@ func SendProposal(c echo.Context) error {
 	ip := c.RealIP()
 	model.InsertLog(ip, "UploadFoto", result.Data, 3)
 	return c.JSON(http.StatusOK, result)
+}
+
+func CobaHashing(c echo.Context) error {
+	password := c.Param("pass")
+	result, err := model.CobaHashing(password)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func SamainPassword(c echo.Context) error {
+	id := c.Param("id")
+	password := c.Param("pass")
+	result, err := model.SamainPassword(password, id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+
 }

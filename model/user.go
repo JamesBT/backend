@@ -15,6 +15,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // CRUD user ============================================================================
@@ -50,6 +52,8 @@ func Login(akun string) (Response, error) {
 		return res, err
 	}
 
+	fmt.Println("ambil user id")
+
 	var userId int
 	err = stmt.QueryRow(usr.Username).Scan(&userId)
 	if err != nil {
@@ -60,9 +64,39 @@ func Login(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
+	fmt.Println("user id: ", userId)
+
+	var tempDBPass string
+	querypass := `SELECT password FROM user WHERE user_id = ?;`
+	stmtpass, err := con.Prepare(querypass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtpass.Close()
+
+	err = stmtpass.QueryRow(userId).Scan(&tempDBPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query password gagal"
+		res.Data = err.Error()
+		return res, errors.New("query password gagal")
+	}
+
+	// cek pass sama atau tidak
+	err = bcrypt.CompareHashAndPassword([]byte(tempDBPass), []byte(usr.Password))
+	if err != nil {
+		res.Status = 404
+		res.Message = "password salah"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	// cek apakah password benar atau tidak
 	// queryinsert := "SELECT user_id, username, nama_lengkap, alamat, jenis_kelamin, tanggal_lahir, email, nomor_telepon, foto_profil, ktp FROM user WHERE username = ? AND password = ?"
-	queryinsert := `SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, IFNULL(u.tanggal_lahir,""), u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE u.username = ? AND u.password = ?;`
+	queryinsert := `SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, IFNULL(u.tanggal_lahir,""), u.email, u.nomor_telepon, u.foto_profil, u.ktp, ud.user_kelas_id, ud.status, ud.tipe, ud.first_login, ud.denied_by_admin FROM user u JOIN user_detail ud ON u.user_id = ud.user_detail_id WHERE u.user_id = ?;`
 	stmtinsert, err := con.Prepare(queryinsert)
 	if err != nil {
 		res.Status = 401
@@ -72,7 +106,7 @@ func Login(akun string) (Response, error) {
 	}
 	defer stmtinsert.Close()
 
-	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin)
+	err = stmtinsert.QueryRow(userId).Scan(&loginUsr.Id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat, &loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp, &loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Kelas, &loginUsr.Status, &loginUsr.Tipe, &loginUsr.First_login, &loginUsr.Denied_by_admin)
 	if err != nil {
 		res.Status = 401
 		res.Message = "password salah"
@@ -204,6 +238,14 @@ func SignUp(akun string) (Response, error) {
 		fmt.Println("email valid")
 	}
 
+	hashedPass, err := bcrypt.GenerateFromPassword([]byte(usr.Password), 10)
+	if err != nil {
+		res.Status = 401
+		res.Message = "hashing gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	// masukkan ke db
 	insertquery := "INSERT INTO user (username,password,nama_lengkap,email,nomor_telepon,tanggal_lahir) VALUES (?,?,?,?,?,NOW())"
 	insertstmt, err := con.Prepare(insertquery)
@@ -215,7 +257,7 @@ func SignUp(akun string) (Response, error) {
 	}
 	defer insertstmt.Close()
 	fmt.Println(usr)
-	result, err := insertstmt.Exec(usr.Username, usr.Password, usr.Nama_lengkap, usr.Email, usr.No_telp)
+	result, err := insertstmt.Exec(usr.Username, string(hashedPass), usr.Nama_lengkap, usr.Email, usr.No_telp)
 	if err != nil {
 		res.Status = 401
 		res.Message = "insert user gagal"
@@ -239,7 +281,7 @@ func SignUp(akun string) (Response, error) {
 	randomnumber := randomizer.Intn(9000) + 1000
 
 	// tambah ke user detail
-	insertdetailquery := "INSERT INTO user_detail (user_detail_id,user_kelas_id,status,tipe,kode_otp) VALUES (?,?,?,?,?)"
+	insertdetailquery := "INSERT INTO user_detail (user_detail_id,user_kelas_id,tipe,kode_otp) VALUES (?,?,?,?)"
 	insertdetailstmt, err := con.Prepare(insertdetailquery)
 	if err != nil {
 		res.Status = 401
@@ -249,7 +291,7 @@ func SignUp(akun string) (Response, error) {
 	}
 	defer insertstmt.Close()
 
-	_, err = insertdetailstmt.Exec(usr.Id, 1, 1, 8, randomnumber)
+	_, err = insertdetailstmt.Exec(usr.Id, 1, 8, randomnumber)
 	if err != nil {
 		res.Status = 401
 		res.Message = "insert user detail gagal"
@@ -1167,7 +1209,7 @@ func AdminUserManagement() (Response, error) {
 	LEFT JOIN 
 		perusahaan p ON up.id_perusahaan = p.perusahaan_id
 	WHERE 
-		ud.status = 'V' AND r.admin_role = 'N'
+		ud.status = 'V' AND r.admin_role = 'N' 
 	GROUP BY 
 		u.user_id, 
 		u.nama_lengkap, 
@@ -1224,5 +1266,76 @@ func AdminUserManagement() (Response, error) {
 	res.Data = arrUser
 
 	defer db.DbClose(con)
+	return res, nil
+}
+
+func CobaHashing(input string) (Response, error) {
+	var res Response
+	hasilHash, err := bcrypt.GenerateFromPassword([]byte(input), 10)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Error"
+		return res, err
+	}
+	fmt.Println(string(hasilHash))
+	res.Status = 200
+	res.Message = "hashing berhasil"
+	res.Data = string(hasilHash)
+	return res, nil
+}
+
+func SamainPassword(input, id string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "SELECT password FROM user WHERE user_id = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	var dtPass string
+	err = stmt.QueryRow(id).Scan(&dtPass)
+	if err != nil {
+		res.Status = 404
+		res.Message = "password not found"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tempPass, err := bcrypt.GenerateFromPassword([]byte(input), 10)
+	if err != nil {
+		res.Status = 404
+		res.Message = "hashing error"
+		res.Data = err.Error()
+		return res, err
+	}
+	fmt.Println(tempPass)
+	fmt.Println(dtPass)
+
+	err = bcrypt.CompareHashAndPassword([]byte(dtPass), []byte(input))
+	if err != nil {
+		res.Status = 404
+		res.Message = "password salah"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengcek password"
+
+	defer db.DbClose(con)
+
 	return res, nil
 }
