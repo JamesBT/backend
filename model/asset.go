@@ -1060,13 +1060,13 @@ func GetAllAsset() (Response, error) {
 
 	var masaSewa, deleteAt []byte
 	var linkGambar sql.NullString
-	var idJoin, idAssetChild sql.NullString
+	var idJoin, idAssetChild, tipe sql.NullString
 	var idAssetParent, idProvinsi sql.NullInt32
 
 	for result.Next() {
 		var dtAset Asset
 		err = result.Scan(
-			&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset,
+			&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset,
 			&dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat,
 			&dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan,
 			&dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at,
@@ -1099,6 +1099,11 @@ func GetAllAsset() (Response, error) {
 			}
 		} else {
 			dtAset.Deleted_at = ""
+		}
+		if tipe.Valid {
+			dtAset.Tipe = tipe.String
+		} else {
+			dtAset.Tipe = ""
 		}
 		if idAssetParent.Valid {
 			dtAset.Id_asset_parent = int(idAssetParent.Int32)
@@ -1185,9 +1190,9 @@ func GetAssetById(aset_id string) (Response, error) {
 	nId, _ := strconv.Atoi(aset_id)
 	var masaSewa []byte
 	var deleteAt []byte
-	var idJoin, idAssetChild sql.NullString
+	var idJoin, idAssetChild, tipe sql.NullString
 	var idAssetParent, idProvinsi sql.NullInt32
-	err = stmt.QueryRow(nId).Scan(&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
+	err = stmt.QueryRow(nId).Scan(&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -1216,6 +1221,11 @@ func GetAssetById(aset_id string) (Response, error) {
 		}
 	} else {
 		dtAset.Deleted_at = ""
+	}
+	if tipe.Valid {
+		dtAset.Tipe = tipe.String
+	} else {
+		dtAset.Tipe = ""
 	}
 	if idAssetParent.Valid {
 		dtAset.Id_asset_parent = int(idAssetParent.Int32)
@@ -1474,10 +1484,10 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	nId, _ := strconv.Atoi(aset_id)
 	var masaSewa []byte
 	var deleteAt []byte
-	var idJoin, idAssetChild sql.NullString
+	var idJoin, idAssetChild, tipe sql.NullString
 	var idAssetParent, idProvinsi sql.NullInt32
 	err = stmt.QueryRow(nId).Scan(
-		&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
+		&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
 	if err != nil {
 		return dtAset, err
 	}
@@ -1502,6 +1512,11 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 		}
 	} else {
 		dtAset.Deleted_at = ""
+	}
+	if tipe.Valid {
+		dtAset.Tipe = tipe.String
+	} else {
+		dtAset.Tipe = ""
 	}
 	if idAssetParent.Valid {
 		dtAset.Id_asset_parent = int(idAssetParent.Int32)
@@ -1588,27 +1603,22 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	for _, childId := range childIds {
 		trimmedChildId := strings.TrimSpace(childId)
 
-		// Query to check if the child asset's `deleted_at` is NULL
 		var deletedAt sql.NullString
 		checkQuery := "SELECT deleted_at FROM asset WHERE id_asset = ?"
 		err := con.QueryRow(checkQuery, trimmedChildId).Scan(&deletedAt)
 		if err != nil {
 			if err == sql.ErrNoRows {
-				// If the asset does not exist, continue to the next child
 				fmt.Printf("Child asset %s not found, skipping.\n", trimmedChildId)
 				continue
 			}
-			// If another error occurs, return the error
 			return dtAset, err
 		}
 
-		// Skip this child if deleted_at is not NULL
 		if deletedAt.Valid {
 			fmt.Printf("Skipping child asset %s because it has been deleted.\n", trimmedChildId)
 			continue
 		}
 
-		// Fetch detailed data for the child asset if it's not deleted
 		childAset, err := fetchAssetDetailed(con, trimmedChildId)
 		if err != nil {
 			return dtAset, err
@@ -2184,6 +2194,7 @@ func JoinAsset(input string) (Response, error) {
 
 	fmt.Println(tempjoinAsset.IdAsset1)
 	fmt.Println(tempjoinAsset.IdAsset2)
+
 	var dtAsset1 Asset
 	var dtAsset2 Asset
 
@@ -2197,11 +2208,11 @@ func JoinAsset(input string) (Response, error) {
 	}
 	defer stmtAsset1.Close()
 
-	var masaSewa sql.NullTime
-	var deleteAt sql.NullTime
-	var idAssetParent, idAssetChild, idJoin, idPerusahaan sql.NullInt32
+	var masaSewa []byte
+	var deleteAt []byte
+	var idAssetParent, idAssetChild, idJoin sql.NullInt32
 	err = stmtAsset1.QueryRow(tempjoinAsset.IdAsset1).Scan(&dtAsset1.Id_asset, &idAssetParent, &idAssetChild, &idJoin,
-		&idPerusahaan, &dtAsset1.Nama, &dtAsset1.Tipe, &dtAsset1.Nomor_legalitas,
+		&dtAsset1.Nama, &dtAsset1.Tipe, &dtAsset1.Nomor_legalitas,
 		&dtAsset1.File_legalitas, &dtAsset1.Status_asset, &dtAsset1.Surat_kuasa, &dtAsset1.Surat_legalitas, &dtAsset1.Alamat,
 		&dtAsset1.Kondisi, &dtAsset1.Titik_koordinat, &dtAsset1.Batas_koordinat, &dtAsset1.Luas,
 		&dtAsset1.Nilai, &dtAsset1.Provinsi, &dtAsset1.Status_pengecekan,
@@ -2213,16 +2224,28 @@ func JoinAsset(input string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	if masaSewa.Valid {
-		dtAsset1.Masa_sewa = masaSewa.Time.Format("2024-08-08")
-	} else {
-		dtAsset1.Masa_sewa = ""
-	}
-	if deleteAt.Valid {
-		dtAsset1.Deleted_at = deleteAt.Time.Format("2024-08-08")
+	if masaSewa != nil {
+		masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+		if masaSewaErr != nil {
+			dtAsset1.Deleted_at = ""
+		} else {
+			dtAsset1.Deleted_at = masaSewaWaktu.Format("2006-01-02 15:04:05")
+		}
 	} else {
 		dtAsset1.Deleted_at = ""
 	}
+
+	if deleteAt != nil {
+		parsedTime, parseErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+		if parseErr != nil {
+			dtAsset1.Deleted_at = ""
+		} else {
+			dtAsset1.Deleted_at = parsedTime.Format("2006-01-02 15:04:05")
+		}
+	} else {
+		dtAsset1.Deleted_at = ""
+	}
+
 	if idAssetParent.Valid {
 		dtAsset1.Id_asset_parent = int(idAssetParent.Int32)
 	} else {
@@ -2249,11 +2272,11 @@ func JoinAsset(input string) (Response, error) {
 	}
 	defer stmtAsset2.Close()
 
-	var masaSewa2 sql.NullTime
-	var deleteAt2 sql.NullTime
-	var idAssetParent2, idAssetChild2, idJoin2, idPerusahaan2 sql.NullInt32
+	var masaSewa2 []byte
+	var deleteAt2 []byte
+	var idAssetParent2, idAssetChild2, idJoin2 sql.NullInt32
 	err = stmtAsset1.QueryRow(tempjoinAsset.IdAsset2).Scan(&dtAsset2.Id_asset, &idAssetParent2, &idAssetChild2, &idJoin2,
-		&idPerusahaan2, &dtAsset2.Nama, &dtAsset2.Tipe, &dtAsset2.Nomor_legalitas,
+		&dtAsset2.Nama, &dtAsset2.Tipe, &dtAsset2.Nomor_legalitas,
 		&dtAsset2.File_legalitas, &dtAsset2.Status_asset, &dtAsset2.Surat_kuasa, &dtAsset2.Surat_legalitas, &dtAsset2.Alamat,
 		&dtAsset2.Kondisi, &dtAsset2.Titik_koordinat, &dtAsset2.Batas_koordinat, &dtAsset2.Luas,
 		&dtAsset2.Nilai, &dtAsset2.Provinsi, &dtAsset2.Status_pengecekan,
@@ -2265,13 +2288,24 @@ func JoinAsset(input string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	if masaSewa2.Valid {
-		dtAsset2.Masa_sewa = masaSewa.Time.Format("2024-08-08")
+	if masaSewa != nil {
+		masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+		if masaSewaErr != nil {
+			dtAsset2.Deleted_at = ""
+		} else {
+			dtAsset2.Deleted_at = masaSewaWaktu.Format("2006-01-02 15:04:05")
+		}
 	} else {
-		dtAsset2.Masa_sewa = ""
+		dtAsset2.Deleted_at = ""
 	}
-	if deleteAt2.Valid {
-		dtAsset2.Deleted_at = deleteAt.Time.Format("2024-08-08")
+
+	if deleteAt != nil {
+		parsedTime, parseErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+		if parseErr != nil {
+			dtAsset2.Deleted_at = ""
+		} else {
+			dtAsset2.Deleted_at = parsedTime.Format("2006-01-02 15:04:05")
+		}
 	} else {
 		dtAsset2.Deleted_at = ""
 	}
@@ -2289,6 +2323,160 @@ func JoinAsset(input string) (Response, error) {
 		dtAsset2.Id_join = strconv.Itoa(int(idJoin.Int32))
 	} else {
 		dtAsset2.Id_join = "0"
+	}
+
+	tempIdJoin1 := strconv.Itoa(tempjoinAsset.IdAsset1)
+	tempIdJoin2 := strconv.Itoa(tempjoinAsset.IdAsset2)
+	tempGabungIdJoin := tempIdJoin1 + "," + tempIdJoin2
+	var existingAssetId int
+	queryCheck := `SELECT id_asset FROM asset WHERE id_join = ?`
+	err = con.QueryRow(queryCheck, tempGabungIdJoin).Scan(&existingAssetId)
+	if err == nil {
+		queryRemoveDeletedAt := `UPDATE asset SET deleted_at = NULL WHERE id_asset = ?`
+		_, err = con.Exec(queryRemoveDeletedAt, existingAssetId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal menghapus deleted_at"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		querySetDeletedAt := `UPDATE asset SET deleted_at = NOW() WHERE id_asset = ?`
+		_, err = con.Exec(querySetDeletedAt, tempjoinAsset.IdAsset1)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal mengatur deleted_at untuk IdAsset1"
+			res.Data = err.Error()
+			return res, err
+		}
+		_, err = con.Exec(querySetDeletedAt, tempjoinAsset.IdAsset2)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal mengatur deleted_at untuk IdAsset2"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		if dtAsset1.Id_asset_parent == dtAsset2.Id_asset_parent {
+			var idAsetChild string
+			queryParent := `SELECT id_asset_child FROM asset WHERE id_asset = ?`
+			stmtParent, err := con.Prepare(queryParent)
+			if err != nil {
+				res.Status = 401
+				res.Message = "stmt gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+			defer stmtParent.Close()
+
+			err = stmtParent.QueryRow(dtAsset1.Id_asset_parent).Scan(&idAsetChild)
+			if err != nil {
+				res.Status = 401
+				res.Message = "exec gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+
+			idAsetChild = idAsetChild + "," + strconv.Itoa(int(existingAssetId))
+			queryUpdateParent := `UPDATE asset SET id_asset_child = ? WHERE id_asset = ?`
+			stmtUpdateParent, err := con.Prepare(queryUpdateParent)
+			if err != nil {
+				res.Status = 401
+				res.Message = "stmt gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+			defer stmtUpdateParent.Close()
+
+			_, err = stmtUpdateParent.Exec(idAsetChild, dtAsset1.Id_asset_parent)
+			if err != nil {
+				res.Status = 401
+				res.Message = "exec gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+		}
+
+		// Return success response
+		res.Status = http.StatusOK
+		res.Message = "Berhasil memperbarui data"
+		return res, nil
+	}
+
+	tempGabungIdJoin2 := tempIdJoin2 + "," + tempIdJoin1
+	var existingAssetId2 int
+	queryCheck2 := `SELECT id_asset FROM asset WHERE id_join = ?`
+	err = con.QueryRow(queryCheck2, tempGabungIdJoin2).Scan(&existingAssetId2)
+	if err == nil {
+		queryRemoveDeletedAt := `UPDATE asset SET deleted_at = NULL WHERE id_asset = ?`
+		_, err = con.Exec(queryRemoveDeletedAt, existingAssetId)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal menghapus deleted_at"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		querySetDeletedAt := `UPDATE asset SET deleted_at = NOW() WHERE id_asset = ?`
+		_, err = con.Exec(querySetDeletedAt, tempjoinAsset.IdAsset1)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal mengatur deleted_at untuk IdAsset1"
+			res.Data = err.Error()
+			return res, err
+		}
+		_, err = con.Exec(querySetDeletedAt, tempjoinAsset.IdAsset2)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal mengatur deleted_at untuk IdAsset2"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		if dtAsset1.Id_asset_parent == dtAsset2.Id_asset_parent {
+			var idAsetChild string
+			queryParent := `SELECT id_asset_child FROM asset WHERE id_asset = ?`
+			stmtParent, err := con.Prepare(queryParent)
+			if err != nil {
+				res.Status = 401
+				res.Message = "stmt gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+			defer stmtParent.Close()
+
+			err = stmtParent.QueryRow(dtAsset1.Id_asset_parent).Scan(&idAsetChild)
+			if err != nil {
+				res.Status = 401
+				res.Message = "exec gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+
+			idAsetChild = idAsetChild + "," + strconv.Itoa(int(existingAssetId))
+			queryUpdateParent := `UPDATE asset SET id_asset_child = ? WHERE id_asset = ?`
+			stmtUpdateParent, err := con.Prepare(queryUpdateParent)
+			if err != nil {
+				res.Status = 401
+				res.Message = "stmt gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+			defer stmtUpdateParent.Close()
+
+			_, err = stmtUpdateParent.Exec(idAsetChild, dtAsset1.Id_asset_parent)
+			if err != nil {
+				res.Status = 401
+				res.Message = "exec gagal"
+				res.Data = err.Error()
+				return res, err
+			}
+		}
+
+		// Return success response
+		res.Status = http.StatusOK
+		res.Message = "Berhasil memperbarui data"
+		return res, nil
 	}
 
 	fmt.Println("gabung aset")
@@ -2358,7 +2546,7 @@ func JoinAsset(input string) (Response, error) {
 			return res, err
 		}
 
-		idAsetChild = idAsetChild + ", " + strconv.Itoa(int(lastId))
+		idAsetChild = idAsetChild + "," + strconv.Itoa(int(lastId))
 		queryUpdateParent := `UPDATE asset SET id_asset_child = ? WHERE id_asset = ?`
 		stmtUpdateParent, err := con.Prepare(queryUpdateParent)
 		if err != nil {
@@ -2369,7 +2557,7 @@ func JoinAsset(input string) (Response, error) {
 		}
 		defer stmtUpdateParent.Close()
 
-		_, err = stmtUpdateParent.Exec(dtAsset1.Id_asset_parent, idAsetChild)
+		_, err = stmtUpdateParent.Exec(idAsetChild, dtAsset1.Id_asset_parent)
 		if err != nil {
 			res.Status = 401
 			res.Message = "exec gagal"
@@ -2425,8 +2613,29 @@ func JoinAsset(input string) (Response, error) {
 
 func GetAssetRentedByUserId(userId string) (Response, error) {
 	var res Response
+	type TransactionRequestCustom struct {
+		Id_transaksi_jual_sewa int    `json:"id_transaksi_jual_sewa"`
+		Perusahaan_id          int    `json:"perusahaan_id"`
+		Lokasi_perusahaan      string `json:"lokasi_perusahaan"`
+		User_id                int    `json:"user_id"`
+		Username               string `json:"username"`
+		Nama_lengkap           string `json:"nama_lengkap"`
+		Id_asset               int    `json:"id_asset"`
+		Nama_aset              string `json:"nama_aset"`
+		Alamat_aset            string `json:"alamat"`
+		Status                 string `json:"status"`
+		Nama_progress          string `json:"nama_progress"`
+		Proposal               string `json:"proposal"`
+		Tgl_meeting            string `json:"tgl_meeting"`
+		Waktu_meeting          string `json:"waktu_meeting"`
+		Lokasi_meeting         string `json:"lokasi_meeting"`
+		Deskripsi              string `json:"deskripsi"`
+		Alasan                 string `json:"alasan"`
+		Tgl_dateline           string `json:"tgl_dateline"`
+		Created_at             string `json:"created_at"`
+	}
 	// asset + transaction_request + progress
-	var arrAsetTranReq = []TransactionRequest{}
+	var arrAsetTranReq = []TransactionRequestCustom{}
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -2438,7 +2647,7 @@ func GetAssetRentedByUserId(userId string) (Response, error) {
 
 	query := `
 	SELECT tr.id_transaksi_jual_sewa,tr.perusahaan_id,tr.user_id,tr.id_asset,
-		a.nama,tr.status, tr.nama_progress,tr.proposal,tr.tgl_meeting,tr.waktu_meeting,
+		a.nama, a.alamat, tr.status, tr.nama_progress,tr.proposal,tr.tgl_meeting,tr.waktu_meeting,
 		tr.lokasi_meeting,tr.deskripsi,tr.alasan,IFNULL(tr.tgl_dateline,""),tr.created_at
 	FROM transaction_request tr
 	LEFT JOIN asset a ON tr.id_asset = a.id_asset
@@ -2463,9 +2672,9 @@ func GetAssetRentedByUserId(userId string) (Response, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var dtTranReq TransactionRequest
+		var dtTranReq TransactionRequestCustom
 		err := rows.Scan(&dtTranReq.Id_transaksi_jual_sewa, &dtTranReq.Perusahaan_id,
-			&dtTranReq.User_id, &dtTranReq.Id_asset, &dtTranReq.Nama_aset, &dtTranReq.Status, &dtTranReq.Nama_progress,
+			&dtTranReq.User_id, &dtTranReq.Id_asset, &dtTranReq.Nama_aset, &dtTranReq.Alamat_aset, &dtTranReq.Status, &dtTranReq.Nama_progress,
 			&dtTranReq.Proposal, &dtTranReq.Tgl_meeting, &dtTranReq.Waktu_meeting, &dtTranReq.Lokasi_meeting, &dtTranReq.Deskripsi,
 			&dtTranReq.Alasan, &dtTranReq.Tgl_dateline, &dtTranReq.Created_at)
 		if err != nil {
@@ -2857,7 +3066,7 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 
 	// hapus file legalitas + surat kuasa kalau ada + gambar aset
 	linkasetQueue := `
-	SELECT a.file_legalitas, a.surat_kuasa, ag.link_gambar
+	SELECT a.file_legalitas, a.surat_kuasa, IFNULL(ag.link_gambar,'')
 	FROM asset a
 	LEFT JOIN asset_gambar ag ON a.id_asset = ag.id_asset_gambar
 	WHERE a.id_asset = ?
@@ -2890,13 +3099,18 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 			existingImages = append(existingImages, linkGambar)
 		}
 	}
-	err = os.Remove(linkfilelegalitas)
-	if err != nil {
-		return res, err
+	if linkfilelegalitas != "" {
+		err = os.Remove(linkfilelegalitas)
+		if err != nil {
+			return res, err
+		}
+
 	}
-	err = os.Remove(linksuratkuasa)
-	if err != nil {
-		return res, err
+	if linksuratkuasa != "" {
+		err = os.Remove(linksuratkuasa)
+		if err != nil {
+			return res, err
+		}
 	}
 
 	for _, deleteFile := range existingImages {

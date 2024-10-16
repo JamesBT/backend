@@ -265,6 +265,34 @@ func VerifyPerusahaanAccept(input string) (Response, error) {
 		return res, err
 	}
 
+	insertPrivPerusahaan := `
+		INSERT INTO role_privilege_all (id_perusahaan,id_role,id_privilege) VALUES (?,?,?)
+	`
+	stmtInsertPriv, err := con.Prepare(insertPrivPerusahaan)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtInsertPriv.Close()
+
+	_, err = stmtInsertPriv.Exec(requestacc.PerusahaanId, 5, 25)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	_, err = stmtInsertPriv.Exec(requestacc.PerusahaanId, 5, 28)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	title := "Your company request has been accepted!"
 	detail := ""
 
@@ -821,16 +849,6 @@ func VerifyAssetAccept(input string) (Response, error) {
 		}
 	}
 
-	// Delete old asset_gambar entries after moving
-	deleteImagesQuery := "DELETE FROM asset_gambar WHERE id_asset_gambar = ?"
-	_, err = con.Exec(deleteImagesQuery, dtSurveyReq.Id_asset)
-	if err != nil {
-		res.Status = 401
-		res.Message = "query gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
 	// Process and insert new images: Copy from survey_req/gambar to asset/gambar, rename, and update
 	var updatedGambarNew []string
 	if gambar_new.Valid {
@@ -1085,6 +1103,8 @@ func AcceptTransaction(input string) (Response, error) {
 		return res, err
 	}
 
+	fmt.Println("ambil data dari tran req")
+
 	getProgressAndAssetQuery := `
 	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama, p.name
 	FROM transaction_request tr
@@ -1094,13 +1114,15 @@ func AcceptTransaction(input string) (Response, error) {
 	`
 	err = con.QueryRow(getProgressAndAssetQuery, tempTranReq.Id).Scan(
 		&tempTranReq.AssetId, &tempTranReq.UserId, &tempTranReq.PerusahaanId,
-		&tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama)
+		&tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama, &tempTranReq.PerusahaanNama)
 	if err != nil {
 		res.Status = 401
 		res.Message = "Gagal mengambil nama_progress, proposal, dan nama asset"
 		res.Data = err.Error()
 		return res, err
 	}
+
+	fmt.Println("masukkan ke progress")
 
 	insertProgressQuery := `
 	INSERT INTO progress (user_id, perusahaan_id, id_asset, nama, proposal) 
@@ -1207,7 +1229,7 @@ func DeclineTransaction(input string) (Response, error) {
 	}
 
 	getProgressAndAssetQuery := `
-	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama 
+	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama, tr.nama_progress, p.name 
 	FROM transaction_request tr
 	LEFT JOIN asset a ON tr.id_asset = a.id_asset
 	LEFT JOIN perusahaan p ON tr.perusahaan_id = p.perusahaan_id
@@ -1216,7 +1238,7 @@ func DeclineTransaction(input string) (Response, error) {
 	err = con.QueryRow(getProgressAndAssetQuery, tempTranReq.Id).Scan(
 		&tempTranReq.AssetId, &tempTranReq.UserId, &tempTranReq.PerusahaanId,
 		&tempTranReq.NamaProgress, &tempTranReq.Proposal, &tempTranReq.AssetNama,
-		&tempTranReq.PerusahaanId)
+		&tempTranReq.NamaProgress, &tempTranReq.PerusahaanNama)
 	if err != nil {
 		res.Status = 401
 		res.Message = "Gagal mengambil nama_progress, proposal, dan nama asset"
@@ -1245,8 +1267,7 @@ func DeclineTransaction(input string) (Response, error) {
 		return res, err
 	}
 
-	title := fmt.Sprintf("Your transaction request for %s has been DECLINED", tempTranReq.PerusahaanNama)
-	detail := ""
+	title := fmt.Sprintf("Your transaction request for %s on company %s has been DECLINED", tempTranReq.NamaProgress, tempTranReq.PerusahaanNama)
 
 	testingString := fmt.Sprintf(`
 	{
@@ -1254,9 +1275,9 @@ func DeclineTransaction(input string) (Response, error) {
 		"user_id_receiver": %d,
 		"perusahaan_id_receiver": %d,
 		"notification_title": "%s",
-		"notification_detail": "%s"
+		"notification_detail": ""
 	}
-	`, tempTranReq.SenderId, tempTranReq.UserId, tempTranReq.PerusahaanId, title, detail)
+	`, tempTranReq.SenderId, tempTranReq.UserId, tempTranReq.PerusahaanId, title)
 
 	res, err = CreateNotification(testingString)
 	if err != nil {

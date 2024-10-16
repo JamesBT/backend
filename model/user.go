@@ -730,6 +730,38 @@ func UpdateUserById(filefoto *multipart.FileHeader, id, username, password, nama
 		return res, err
 	}
 
+	var tempPass string
+	queryPass := "SELECT password FROM user WHERE user_id = ?"
+	stmtPass, err := con.Prepare(queryPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtPass.Close()
+	err = stmtPass.QueryRow(id).Scan(&tempPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var hashedPass string
+	if tempPass != password {
+		tempHashedPass, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		hashedPass = string(tempHashedPass)
+	} else {
+		hashedPass = password
+	}
+
 	query := "UPDATE user SET username = ?, password = ?, nama_lengkap = ?, email = ?, nomor_telepon = ?, updated_at = NOW() WHERE user_id = ? "
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -740,7 +772,7 @@ func UpdateUserById(filefoto *multipart.FileHeader, id, username, password, nama
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(username, password, nama_lengkap, email, no_telp, id)
+	result, err := stmt.Exec(username, hashedPass, nama_lengkap, email, no_telp, id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
@@ -1314,14 +1346,6 @@ func SamainPassword(input, id string) (Response, error) {
 		return res, err
 	}
 
-	tempPass, err := bcrypt.GenerateFromPassword([]byte(input), 10)
-	if err != nil {
-		res.Status = 404
-		res.Message = "hashing error"
-		res.Data = err.Error()
-		return res, err
-	}
-	fmt.Println(tempPass)
 	fmt.Println(dtPass)
 
 	err = bcrypt.CompareHashAndPassword([]byte(dtPass), []byte(input))

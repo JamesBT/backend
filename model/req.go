@@ -183,19 +183,20 @@ func CreateSurveyReq(surat *multipart.FileHeader, sender_id, user_id, id_asset, 
 		return res, err
 	}
 
-	title := "You’ve got a new assignment!"
+	title := "You got a new assignment!"
 	detail := fmt.Sprintf("Please do a survey on : %s", nama)
 
 	testingString := fmt.Sprintf(`
 	{
-		"user_id_sender": %d,
-		"user_id_receiver": %d,
+		"user_id_sender": %s,
+		"user_id_receiver": %s,
 		"perusahaan_id_receiver": 0,
 		"notification_title": "%s",
 		"notification_detail": "%s"
 	}
 	`, sender_id, user_id, title, detail)
 
+	fmt.Println(testingString)
 	res, err = CreateNotification(testingString)
 	if err != nil {
 		res.Status = 401
@@ -1685,7 +1686,7 @@ func GetAllTranReq() (Response, error) {
 	query := `
 	SELECT tr.id_transaksi_jual_sewa, tr.perusahaan_id, p.lokasi, tr.user_id, u.username, u.nama_lengkap, tr.id_asset, 
 		a.nama, tr.status, tr.nama_progress, tr.proposal, IFNULL(tr.tgl_meeting, ''), IFNULL(tr.lokasi_meeting,''), 
-		IFNULL(tr.deskripsi,''), IFNULL(tr.alasan,''), IFNULL(tr.tgl_dateline, ''), tr.created_at 
+		IFNULL(tr.deskripsi,''), IFNULL(tr.alasan,''), IFNULL(tr.tgl_dateline, ''), tr.created_at, tr.waktu_meeting, tr.deskripsi, tr.alasan
 	FROM transaction_request tr
 	LEFT JOIN perusahaan p ON tr.perusahaan_id = p.perusahaan_id
 	LEFT JOIN user u ON tr.user_id = u.user_id
@@ -1706,7 +1707,7 @@ func GetAllTranReq() (Response, error) {
 			&tranReq.User_id, &tranReq.Username, &tranReq.Nama_lengkap, &tranReq.Id_asset, &tranReq.Nama_aset, &tranReq.Status, &tranReq.Nama_progress,
 			&tranReq.Proposal, &tranReq.Tgl_meeting, &tranReq.Lokasi_meeting,
 			&tranReq.Deskripsi, &tranReq.Alasan, &tranReq.Tgl_dateline,
-			&tranReq.Created_at)
+			&tranReq.Created_at, &tranReq.Waktu_meeting, &tranReq.Deskripsi, &tranReq.Alasan)
 		if err != nil {
 			res.Status = 401
 			res.Message = "Failed to scan row"
@@ -2083,8 +2084,12 @@ func CreateMeeting(dokumen *multipart.FileHeader, id, tanggal_meeting, waktu_mee
 		return res, err
 	}
 
+	var namaPerusahaan string
 	selectQuery := `
-		SELECT user_id, perusahaan_id FROM progress WHERE id = ?
+		SELECT pr.user_id, pr.name
+		FROM progress pr
+		LEFT JOIN perusahaan p ON pr.perusahaan_id = p.perusahaan_id
+		WHERE id = ?
 	`
 	stmtSelect, err := con.Prepare(selectQuery)
 	if err != nil {
@@ -2095,7 +2100,7 @@ func CreateMeeting(dokumen *multipart.FileHeader, id, tanggal_meeting, waktu_mee
 	}
 	defer stmtSelect.Close()
 
-	err = stmtSelect.QueryRow(dtMeeting.Id).Scan(&dtMeeting.User_id, &dtMeeting.Perusahaan_id)
+	err = stmtSelect.QueryRow(dtMeeting.Id).Scan(&dtMeeting.User_id, &namaPerusahaan)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -2103,7 +2108,7 @@ func CreateMeeting(dokumen *multipart.FileHeader, id, tanggal_meeting, waktu_mee
 		return res, err
 	}
 
-	title := fmt.Sprintf("A new meeting for company %s has been set", dtMeeting.Perusahaan_id)
+	title := fmt.Sprintf("A new meeting for company %s has been set", namaPerusahaan)
 	detail := ""
 
 	testingString := fmt.Sprintf(`
@@ -2189,8 +2194,12 @@ func CreateMeetingWithoutDocument(id, tanggal_meeting, waktu_meeting, tempat_mee
 		return res, err
 	}
 
+	var namaPerusahaan string
 	selectQuery := `
-		SELECT user_id, perusahaan_id FROM progress WHERE id = ?
+		SELECT pr.user_id, pr.name
+		FROM progress pr
+		LEFT JOIN perusahaan p ON pr.perusahaan_id = p.perusahaan_id
+		WHERE id = ?
 	`
 	stmtSelect, err := con.Prepare(selectQuery)
 	if err != nil {
@@ -2201,7 +2210,7 @@ func CreateMeetingWithoutDocument(id, tanggal_meeting, waktu_meeting, tempat_mee
 	}
 	defer stmtSelect.Close()
 
-	err = stmtSelect.QueryRow(dtMeeting.Id).Scan(&dtMeeting.User_id, &dtMeeting.Perusahaan_id)
+	err = stmtSelect.QueryRow(dtMeeting.Id).Scan(&dtMeeting.User_id, &namaPerusahaan)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
@@ -2209,7 +2218,7 @@ func CreateMeetingWithoutDocument(id, tanggal_meeting, waktu_meeting, tempat_mee
 		return res, err
 	}
 
-	title := fmt.Sprintf("A new meeting for company %s has been set", dtMeeting.Perusahaan_id)
+	title := fmt.Sprintf("A new meeting for company %s has been set", namaPerusahaan)
 	detail := ""
 
 	testingString := fmt.Sprintf(`

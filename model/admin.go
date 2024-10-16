@@ -109,7 +109,7 @@ func AddAdmin(filefoto *multipart.FileHeader, username, password, nama_lengkap, 
 	tempUserCompany.Id_user = strconv.Itoa(int(userId))
 
 	queryDetail := `
-		INSERT INTO user_detail (user_detail_id, user_kelas_id, status, tipe, status_verifikasi_otp) VALUES (?,6,'V',?,'V')
+		INSERT INTO user_detail (user_detail_id, user_kelas_id, tipe, status_verifikasi_otp) VALUES (?,6,?,'V')
 		`
 	stmtDetail, err := con.Prepare(queryDetail)
 	if err != nil {

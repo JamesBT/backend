@@ -876,7 +876,7 @@ func UpdateLokasiSurveyor(c echo.Context) error {
 // survey_request
 func CreateSurveyReq(c echo.Context) error {
 	idAsset := c.FormValue("idAsset")
-	idSender := c.FormValue("idSender")
+	idSender := c.FormValue("senderId")
 	idUser := c.FormValue("idUser")
 	dateline := c.FormValue("dateline")
 	surat, err := c.FormFile("surat")

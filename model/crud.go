@@ -490,7 +490,26 @@ func CreateNotification(input string) (Response, error) {
 	DeleteNotification()
 	var query string
 	var result sql.Result
-	if kirimnotif.User_id_receiver != 0 {
+
+	if kirimnotif.User_id_receiver != 0 && kirimnotif.Perusahaan_id_receiver != 0 {
+		query = "INSERT INTO notification (user_id_sender, user_id_receiver, perusahaan_id_receiver, created_at, notification_title, notification_detail) VALUES (?,?,?,NOW(),?,?)"
+		stmt, err := con.Prepare(query)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer stmt.Close()
+
+		result, err = stmt.Exec(kirimnotif.User_id_sender, kirimnotif.User_id_receiver, kirimnotif.Perusahaan_id_receiver, kirimnotif.Title, kirimnotif.Detail)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+	} else if kirimnotif.User_id_receiver != 0 {
 		query = "INSERT INTO notification (user_id_sender, user_id_receiver, created_at, notification_title, notification_detail) VALUES (?,?,NOW(),?,?)"
 		stmt, err := con.Prepare(query)
 		if err != nil {

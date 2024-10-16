@@ -55,8 +55,6 @@ func LoginSurveyor(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	fmt.Println("user id: ", userId)
-
 	var tempDBPass string
 	querypass := `SELECT password FROM user WHERE user_id = ?;`
 	stmtpass, err := con.Prepare(querypass)
@@ -76,6 +74,10 @@ func LoginSurveyor(akun string) (Response, error) {
 		return res, errors.New("query password gagal")
 	}
 
+	fmt.Println("user id: ", userId)
+	fmt.Println("user password: ", usr.Password)
+	fmt.Println("pass db:", tempDBPass)
+
 	// cek pass sama atau tidak
 	err = bcrypt.CompareHashAndPassword([]byte(tempDBPass), []byte(usr.Password))
 	if err != nil {
@@ -89,7 +91,7 @@ func LoginSurveyor(akun string) (Response, error) {
 	queryinsert := `
 	SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, 
 	IFNULL(u.tanggal_lahir,''), u.email, u.nomor_telepon, IFNULL(u.foto_profil,''), IFNULL(u.ktp,''),  
-	s.lokasi, s.availability_surveyor, s.suveyor_id 
+	IFNULL(s.lokasi,''), s.availability_surveyor, s.suveyor_id 
 	FROM user u 
 	JOIN user_detail ud ON u.user_id = ud.user_detail_id 
 	JOIN surveyor s ON u.user_id = s.user_id 
@@ -103,16 +105,16 @@ func LoginSurveyor(akun string) (Response, error) {
 	}
 	defer stmtinsert.Close()
 
-	err = stmtinsert.QueryRow(usr.Username, usr.Password).Scan(
+	err = stmtinsert.QueryRow(userId).Scan(
 		&loginUsr.User_id, &loginUsr.Username, &loginUsr.Nama_lengkap, &loginUsr.Alamat,
 		&loginUsr.Jenis_kelamin, &loginUsr.Tgl_lahir, &loginUsr.Email, &loginUsr.No_telp,
 		&loginUsr.Foto_profil, &loginUsr.Ktp, &loginUsr.Lokasi,
 		&loginUsr.Availability_surveyor, &loginUsr.Surveyor_id)
 	if err != nil {
 		res.Status = 401
-		res.Message = "password salah"
+		res.Message = "user id tidak ditemukan"
 		res.Data = err.Error()
-		return res, errors.New("password salah")
+		return res, errors.New("user id tidak ditemukan")
 	}
 
 	// ambil role + privilege
@@ -275,7 +277,7 @@ func SignUpSurveyor(akun string) (Response, error) {
 	usr.Id = int(userId)
 
 	// tambah ke user detail
-	insertdetailquery := "INSERT INTO user_detail (user_detail_id,user_kelas_id,status,tipe) VALUES (?,?,?,?)"
+	insertdetailquery := "INSERT INTO user_detail (user_detail_id,user_kelas_id,tipe) VALUES (?,?,?)"
 	insertdetailstmt, err := con.Prepare(insertdetailquery)
 	if err != nil {
 		res.Status = 401
@@ -285,7 +287,7 @@ func SignUpSurveyor(akun string) (Response, error) {
 	}
 	defer insertstmt.Close()
 
-	_, err = insertdetailstmt.Exec(usr.Id, 1, 1, 7)
+	_, err = insertdetailstmt.Exec(usr.Id, 1, 7)
 	if err != nil {
 		res.Status = 401
 		res.Message = "insert user detail gagal"
