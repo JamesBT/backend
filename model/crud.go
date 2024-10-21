@@ -8,12 +8,17 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"mime/multipart"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // fungsi tambahan
@@ -780,5 +785,259 @@ func DeleteNotification() (Response, error) {
 	res.Status = http.StatusOK
 	res.Message = "Berhasil menghapus notifikasi lama"
 
+	return res, nil
+}
+
+func ForgotPasswordKirimEmail(email string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	_, err = mail.ParseAddress(email)
+	if err != nil {
+		res.Status = 500
+		res.Message = "Invalid email"
+		res.Data = err.Error()
+		return res, err
+	} else {
+		fmt.Println("email valid")
+	}
+
+	// cek sudah terdaftar atau belum
+	query := "SELECT user_id FROM user WHERE email = ?"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var userId int64
+	err = stmt.QueryRow(email).Scan(&userId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			res.Status = 500
+			res.Message = "Email tidak terdaftar"
+			res.Data = err.Error()
+			return res, err
+		}
+		res.Status = 500
+		res.Message = "Query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	// random number generator untuk buat kode otp 4 digit 1000-9999
+	randomizer := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
+	randomnumber := randomizer.Intn(9000) + 1000
+
+	// tambah ke user detail
+	insertdetailquery := "UPDATE user_detail SET kode_otp=? WHERE user_detail_id = ?"
+	insertdetailstmt, err := con.Prepare(insertdetailquery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer insertdetailstmt.Close()
+
+	_, err = insertdetailstmt.Exec(randomnumber, userId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "update kode otp gagal"
+		res.Data = err.Error()
+		return res, errors.New("update kode otp gagal")
+	}
+	defer stmt.Close()
+
+	// kirim email untuk kode otp
+	to := []string{email}
+	cc := []string{email}
+	subject := "Aset Manajemen: Kode Verifikasi (OTP) untuk Verifikasi Identitas"
+	message := "Hai \n\n Kode verifikasi (OTP) Aset Manajemen kamu untuk forgot password:\n " + strconv.Itoa(randomnumber)
+	err = sendMail(to, cc, subject, message)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal kirim email verifikasi kode otp"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	// hilangkan password buat global variabel
+	res.Status = http.StatusOK
+	res.Message = "Berhasil request forgot password"
+	res.Data = "Berhasil request forgot password"
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func ForgotPasswordKirimOTP(email, kode_otp string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	_, err = mail.ParseAddress(email)
+	if err != nil {
+		res.Status = 500
+		res.Message = "Invalid email"
+		res.Data = err.Error()
+		return res, err
+	} else {
+		fmt.Println("email valid")
+	}
+
+	// cek sudah terdaftar atau belum
+	query := `
+	SELECT u.user_id, ud.kode_otp 
+	FROM user u
+	JOIN user_detail ud ON u.user_id = ud.user_detail_id
+	WHERE u.email = ?
+	LIMIT 1
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var userId int64
+	var kodeOTP string
+	err = stmt.QueryRow(email).Scan(&userId, &kodeOTP)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			res.Status = 500
+			res.Message = "Email tidak terdaftar"
+			res.Data = err.Error()
+			return res, err
+		}
+		res.Status = 500
+		res.Message = "Query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	fmt.Println("user id:", userId)
+	fmt.Println("kode otp:", kodeOTP)
+	fmt.Println("kode otp input:", kode_otp)
+
+	if kode_otp != kodeOTP {
+		res.Status = 401
+		res.Message = "Kode OTP salah"
+		return res, errors.New("kode otp salah")
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Kode otp betul"
+	res.Data = "Kode otp betul"
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func ForgotPasswordGantiPass(email, newpass string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	_, err = mail.ParseAddress(email)
+	if err != nil {
+		res.Status = 500
+		res.Message = "Invalid email"
+		res.Data = err.Error()
+		return res, err
+	} else {
+		fmt.Println("email valid")
+	}
+
+	// cek sudah terdaftar atau belum
+	query := `
+	SELECT user_id 
+	FROM user 
+	WHERE email = ?
+	LIMIT 1
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var userId int64
+	err = stmt.QueryRow(email).Scan(&userId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			res.Status = 500
+			res.Message = "Email tidak terdaftar"
+			res.Data = err.Error()
+			return res, err
+		}
+		res.Status = 500
+		res.Message = "Query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	tempHashedPass, err := bcrypt.GenerateFromPassword([]byte(newpass), 10)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	updatePassQuery := `
+	UPDATE user SET password = ? WHERE user_id = ?
+	`
+	updateStmt, err := con.Prepare(updatePassQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	_, err = updateStmt.Exec(tempHashedPass, userId)
+	if err != nil {
+		res.Status = 500
+		res.Message = "Query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer updateStmt.Close()
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil update password"
+	res.Data = "Berhasil update password"
+
+	defer db.DbClose(con)
 	return res, nil
 }

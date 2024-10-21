@@ -656,7 +656,7 @@ func UpdateUser(filefoto *multipart.FileHeader, userid, username, nama_lengkap, 
 		return res, err
 	}
 
-	query := "UPDATE user SET username = ?, nama_lengkap = ?, alamat = ?, jenis_kelamin = ?, tanggal_lahir = ?, email = ?, nomor_telepon = ?,updated_at = NOW() WHERE user_id = ? "
+	query := "UPDATE user SET username = ?, nama_lengkap = ?, `alamat` = ?, jenis_kelamin = ?, tanggal_lahir = ?, email = ?, nomor_telepon = ?,updated_at = NOW() WHERE user_id = ? "
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401

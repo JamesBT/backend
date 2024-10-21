@@ -1715,22 +1715,24 @@ func GetAssetDetailedByPerusahaanId(perusahaan_id string) (Response, error) {
 func fetchAssetsByPerusahaanId(con *sql.DB, perusahaan_id string) ([]Asset, error) {
 	var assets []Asset
 
+	fmt.Println("Fetching assets by perusahaan_id:", perusahaan_id)
+
 	query := `
 	SELECT a.* 
 	FROM transaction_request tr
-	LEFT JOIN asset a ON tr.id_asset = a.id_asset
+	JOIN asset a ON tr.id_asset = a.id_asset
 	WHERE tr.perusahaan_id = ?
+	GROUP BY a.id_asset
 	`
 	rows, err := con.Query(query, perusahaan_id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var dtAset Asset
-		var masaSewa []byte
-		var deleteAt []byte
+		var masaSewa, deleteAt []byte
 		var idJoin, idAssetChild sql.NullString
 		var idAssetParent, idProvinsi sql.NullInt32
 
@@ -1740,114 +1742,165 @@ func fetchAssetsByPerusahaanId(con *sql.DB, perusahaan_id string) ([]Asset, erro
 			&dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi,
 			&dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
 		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Assign nullable fields
+		dtAset.Id_asset_parent = ifValidInt(idAssetParent)
+		dtAset.Id_asset_child = ifValidString(idAssetChild)
+		dtAset.Id_join = ifValidString(idJoin)
+		dtAset.Provinsi = ifValidInt(idProvinsi)
+
+		// Fetch associated images
+		if dtAset.LinkGambar, err = fetchGambarLinks(con, dtAset.Id_asset); err != nil {
 			return nil, err
 		}
 
-		if idAssetParent.Valid {
-			dtAset.Id_asset_parent = int(idAssetParent.Int32)
-		} else {
-			dtAset.Id_asset_parent = 0
-		}
-		if idAssetChild.Valid {
-			dtAset.Id_asset_child = idAssetChild.String
-		} else {
-			dtAset.Id_asset_child = ""
-		}
-		if idJoin.Valid {
-			dtAset.Id_join = idJoin.String
-		} else {
-			dtAset.Id_join = "0"
-		}
-		if idProvinsi.Valid {
-			dtAset.Provinsi = int(idProvinsi.Int32)
-		} else {
-			dtAset.Provinsi = 0
-		}
-
-		// Fetch gambar
-		gambarQuery := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
-		gambarRows, err := con.Query(gambarQuery, dtAset.Id_asset)
-		if err != nil {
+		// Fetch associated usage
+		if dtAset.Usage, err = fetchUsage(con, dtAset.Id_asset); err != nil {
 			return nil, err
 		}
-		defer gambarRows.Close()
 
-		var gambarLinks []string
-		for gambarRows.Next() {
-			var link string
-			err := gambarRows.Scan(&link)
-			if err != nil {
-				return nil, err
-			}
-			gambarLinks = append(gambarLinks, link)
-		}
-		dtAset.LinkGambar = gambarLinks
-
-		// Fetch usage
-		usageQuery := "SELECT p.id,p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
-		usageRows, err := con.Query(usageQuery, dtAset.Id_asset)
-		if err != nil {
+		// Fetch associated tags
+		if dtAset.TagsAssets, err = fetchTags(con, dtAset.Id_asset); err != nil {
 			return nil, err
 		}
-		defer usageRows.Close()
-
-		var usage []Kegunaan
-		for usageRows.Next() {
-			var name Kegunaan
-			err := usageRows.Scan(&name.Id, &name.Nama)
-			if err != nil {
-				return nil, err
-			}
-			usage = append(usage, name)
-		}
-		dtAset.Usage = usage
-
-		// Fetch tags
-		tagsQuery := "SELECT t.id,t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
-		tagsRows, err := con.Query(tagsQuery, dtAset.Id_asset)
-		if err != nil {
-			return nil, err
-		}
-		defer tagsRows.Close()
-
-		var tags []Tags
-		for tagsRows.Next() {
-			var tag Tags
-			err := tagsRows.Scan(&tag.Id, &tag.Nama)
-			if err != nil {
-				return nil, err
-			}
-			tags = append(tags, tag)
-		}
-		dtAset.TagsAssets = tags
 
 		// Fetch child assets
-		childQuery := "SELECT id_asset FROM asset WHERE id_asset_parent = ?"
-		childRows, err := con.Query(childQuery, dtAset.Id_asset)
-		if err != nil {
+		if dtAset.ChildAssets, err = fetchChildAssets(con, dtAset.Id_asset); err != nil {
 			return nil, err
 		}
-		defer childRows.Close()
-
-		var childAssets []Asset
-		for childRows.Next() {
-			var childId int
-			err := childRows.Scan(&childId)
-			if err != nil {
-				return nil, err
-			}
-			childAset, err := fetchAssetDetailed(con, strconv.Itoa(childId))
-			if err != nil {
-				return nil, err
-			}
-			childAssets = append(childAssets, childAset)
-		}
-		dtAset.ChildAssets = childAssets
 
 		assets = append(assets, dtAset)
 	}
 
+	if len(assets) == 0 {
+		fmt.Println("No assets found for perusahaan_id:", perusahaan_id)
+	}
+
 	return assets, nil
+}
+
+// Helper function to handle nullable integers
+func ifValidInt(value sql.NullInt32) int {
+	if value.Valid {
+		return int(value.Int32)
+	}
+	return 0
+}
+
+// Helper function to handle nullable strings
+func ifValidString(value sql.NullString) string {
+	if value.Valid {
+		return value.String
+	}
+	return ""
+}
+
+// Fetch related gambar links
+func fetchGambarLinks(con *sql.DB, assetID int) ([]string, error) {
+	var links []string
+	query := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
+	rows, err := con.Query(query, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var link string
+		if err := rows.Scan(&link); err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	return links, nil
+}
+
+// Fetch associated usage
+func fetchUsage(con *sql.DB, assetID int) ([]Kegunaan, error) {
+	var usage []Kegunaan
+	query := "SELECT p.id, p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
+	rows, err := con.Query(query, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var u Kegunaan
+		if err := rows.Scan(&u.Id, &u.Nama); err != nil {
+			return nil, err
+		}
+		usage = append(usage, u)
+	}
+	return usage, nil
+}
+
+// Fetch associated tags
+func fetchTags(con *sql.DB, assetID int) ([]Tags, error) {
+	var tags []Tags
+	query := "SELECT t.id, t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
+	rows, err := con.Query(query, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tag Tags
+		if err := rows.Scan(&tag.Id, &tag.Nama); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, nil
+}
+
+// Fetch child assets
+func fetchChildAssets(con *sql.DB, parentID int) ([]Asset, error) {
+	var childAssets []Asset
+
+	// Fetch the id_asset_child field for the given parent asset.
+	query := "SELECT id_asset_child FROM asset WHERE id_asset = ?"
+	var idAssetChild sql.NullString
+
+	if err := con.QueryRow(query, parentID).Scan(&idAssetChild); err != nil {
+		if err == sql.ErrNoRows {
+			fmt.Println("No child assets found for parent ID:", parentID)
+			return []Asset{}, nil // Return an empty slice if no children are found.
+		}
+		return nil, fmt.Errorf("failed to fetch id_asset_child: %w", err)
+	}
+
+	if !idAssetChild.Valid || idAssetChild.String == "" {
+		fmt.Println("No child asset IDs for parent ID:", parentID)
+		return []Asset{}, nil
+	}
+
+	// Split the comma-separated child IDs.
+	childIDs := strings.Split(idAssetChild.String, ",")
+
+	for _, idStr := range childIDs {
+		childID, err := strconv.Atoi(strings.TrimSpace(idStr))
+		if err != nil {
+			return nil, fmt.Errorf("invalid child ID: %s, error: %w", idStr, err)
+		}
+
+		// Fetch detailed information for each child asset.
+		child, err := fetchAssetDetailed(con, strconv.Itoa(childID))
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch child asset %d: %w", childID, err)
+		}
+
+		fmt.Println("Child Asset ID:", childID)
+		fmt.Println("Child Asset:", child)
+
+		childAssets = append(childAssets, child)
+	}
+
+	fmt.Println("All Child Assets:", childAssets)
+	return childAssets, nil
 }
 
 func GetAssetDetailedByUserId(perusahaan_id string) (Response, error) {

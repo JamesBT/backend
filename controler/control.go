@@ -2033,3 +2033,38 @@ func SamainPassword(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 
 }
+
+func ForgotPasswordKirimEmail(c echo.Context) error {
+	email := c.Param("email")
+	result, err := model.ForgotPasswordKirimEmail(email)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func ForgotPasswordKirimOTP(c echo.Context) error {
+	email := c.Param("email")
+	kode_otp := c.Param("otp")
+	result, err := model.ForgotPasswordKirimOTP(email, kode_otp)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func ForgotPasswordGantiPass(c echo.Context) error {
+	email := c.Param("email")
+	pass := c.Param("pass")
+	result, err := model.ForgotPasswordGantiPass(email, pass)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}

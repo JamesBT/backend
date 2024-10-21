@@ -265,7 +265,7 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 	query := `
 		SELECT p.perusahaan_id, p.status, p.name, p.username, p.lokasi, p.tipe, IFNULL(p.kelas,0), p.dokumen_kepemilikan, p.dokumen_perusahaan,
 			p.modal_awal,p.deskripsi, p.created_at, p.id_parent, p.id_child, p.archive_asset,
-			u.user_id, u.username, u.nama_lengkap, IFNULL(r.nama_role,"")
+			u.user_id, u.username, u.nama_lengkap, IFNULL(r.nama_role,""), u.foto_profil
 		FROM perusahaan p
 		LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
 		LEFT JOIN user u on up.id_user = u.user_id
@@ -301,7 +301,7 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 			&dtPerusahaan.Kelas, &dtPerusahaan.Dokumen_kepemilikan, &dtPerusahaan.Dokumen_perusahaan,
 			&dtPerusahaan.Modal, &dtPerusahaan.Deskripsi, &dtPerusahaan.CreatedAt,
 			&idParent, &idChild, &idArchiveAsset,
-			&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.UserRole)
+			&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.UserRole, &usr.Foto_profil)
 		if err != nil {
 			res.Status = 401
 			res.Message = "Failed to scan row"

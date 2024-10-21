@@ -174,5 +174,9 @@ func Init() *echo.Echo {
 
 	e.GET("/param/:pass", controler.CobaHashing)
 	e.GET("/param/:id/:pass", controler.SamainPassword)
+
+	e.POST("/forgot_pass/:email", controler.ForgotPasswordKirimEmail)
+	e.POST("/forgot_pass/:email/:otp", controler.ForgotPasswordKirimOTP)
+	e.PUT("/forgot_pass/:email/:pass", controler.ForgotPasswordGantiPass)
 	return e
 }
