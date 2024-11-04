@@ -430,7 +430,6 @@ func VerifyPerusahaanDecline(input string) (Response, error) {
 		return res, err
 	}
 	defer stmt.Close()
-	fmt.Println(requestacc.Alasan)
 	result, err := stmt.Exec(requestacc.Alasan, requestacc.PerusahaanId)
 	if err != nil {
 		res.Status = 401
@@ -637,7 +636,26 @@ func VerifyAssetAccept(input string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE survey_request SET status_request='F',status_verifikasi='V',data_lengkap='Y',status_submitted='Y' WHERE id_transaksi_jual_sewa = ?"
+	queryNamaVerify := `SELECT nama_lengkap FROM user WHERE user_id = ?`
+	stmtNamaVerify, err := con.Prepare(queryNamaVerify)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtNamaVerify.Close()
+
+	var namaVerify string
+	err = stmtNamaVerify.QueryRow(requestacc.SenderId).Scan(&namaVerify)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := "UPDATE survey_request SET id_user_verify = ?, nama_user_verify = ?,status_request='F',status_verifikasi='V',data_lengkap='Y',status_submitted='Y' WHERE id_transaksi_jual_sewa = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -647,7 +665,7 @@ func VerifyAssetAccept(input string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(requestacc.SurveryReqId)
+	_, err = stmt.Exec(requestacc.SenderId, namaVerify, requestacc.SurveryReqId)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
@@ -675,14 +693,6 @@ func VerifyAssetAccept(input string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	fmt.Println("usage_new", usage_new)
-	fmt.Println("luas_new", luas_new)
-	fmt.Println("nilai_new", nilai_new)
-	fmt.Println("kondisi", kondisi_new)
-	fmt.Println("titik_koordinat_new", titik_koordinat_new)
-	fmt.Println("batas_koordinat_new", batas_koordinat_new)
-	fmt.Println("tags_new", tags_new)
-	fmt.Println("id", dtSurveyReq.Id_asset)
 
 	// update data asset dengan yang baru
 	updatequery := "UPDATE asset SET `kondisi`= ?,`titik_koordinat`= ?,`batas_koordinat`= ?,`luas`= ?,`nilai`= ? WHERE `id_asset`= ?"
@@ -946,8 +956,6 @@ func ReassignAsset(input string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	fmt.Println(requestacc)
-	fmt.Println(requestacc.SurveyorId)
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -976,8 +984,6 @@ func ReassignAsset(input string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	fmt.Println(requestacc.SurveyorId)
-	fmt.Println(_tempuserid)
 
 	query := "UPDATE survey_request SET `user_id`=?,`dateline`=?,`status_request`='O',`status_submitted`='N',`status_verifikasi`='R' WHERE id_transaksi_jual_sewa = ?"
 	stmt2, err := con.Prepare(query)
@@ -1103,8 +1109,6 @@ func AcceptTransaction(input string) (Response, error) {
 		return res, err
 	}
 
-	fmt.Println("ambil data dari tran req")
-
 	getProgressAndAssetQuery := `
 	SELECT tr.id_asset,tr.user_id,tr.perusahaan_id,tr.nama_progress, tr.proposal, a.nama, p.name
 	FROM transaction_request tr
@@ -1121,8 +1125,6 @@ func AcceptTransaction(input string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-
-	fmt.Println("masukkan ke progress")
 
 	insertProgressQuery := `
 	INSERT INTO progress (user_id, perusahaan_id, id_asset, nama, proposal) 

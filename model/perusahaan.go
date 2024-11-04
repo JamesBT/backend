@@ -52,7 +52,6 @@ func CreatePerusahaan(file_kepemilikan *multipart.FileHeader, file_perusahaan *m
 		res.Data = err.Error()
 		return res, err
 	}
-	fmt.Println("lastid", lastId)
 	// insert file kepemilikan
 	templastid := strconv.Itoa(int(lastId))
 	file_kepemilikan.Filename = templastid + "_" + file_kepemilikan.Filename
@@ -270,7 +269,7 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 		LEFT JOIN user_perusahaan up ON p.perusahaan_id = up.id_perusahaan
 		LEFT JOIN user u on up.id_user = u.user_id
 		LEFT JOIN role r ON up.id_role = r.role_id 
-		WHERE p.perusahaan_id = ? 
+		WHERE p.perusahaan_id = ?
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -312,6 +311,34 @@ func GetPerusahaanDetailById(id_perusahaan string) (Response, error) {
 			dtUser = append(dtUser, usr)
 		}
 	}
+
+	businessFieldsQuery := `
+		SELECT b.id, b.nama 
+		FROM perusahaan_business pb
+		LEFT JOIN business_field b ON pb.id_business = b.id
+		WHERE pb.id_perusahaan = ?
+	`
+	businessRows, err := con.Query(businessFieldsQuery, nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Gagal mengambil business fields"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer businessRows.Close()
+
+	var businessFields []BusinessField
+	for businessRows.Next() {
+		var field BusinessField
+		if err := businessRows.Scan(&field.Id, &field.Nama); err != nil {
+			res.Status = 401
+			res.Message = "Failed to scan business field"
+			res.Data = err.Error()
+			return res, err
+		}
+		businessFields = append(businessFields, field)
+	}
+	dtPerusahaan.Field = businessFields
 
 	if idChild.Valid && idChild.String != "" {
 		childIds := strings.Split(idChild.String, ",")
@@ -564,7 +591,6 @@ func HomeUserPerusahaan(perusahaan_id string) (Response, error) {
 			res.Data = err.Error()
 			return res, err
 		}
-		fmt.Println("1")
 		homeuser.SemuaAsset = append(homeuser.SemuaAsset, asset)
 	}
 
@@ -584,9 +610,11 @@ func UpdatePerusahaanById(input string) (Response, error) {
 		Username  string `json:"username"`
 		Lokasi    string `json:"lokasi"`
 		Tipe      string `json:"tipe"`
-		Modal     string `json:"modal"`
 		Deskripsi string `json:"deskripsi"`
+		Field     string `json:"field"`
+		Kelas     string `json:"kelas"`
 	}
+
 	var dtPerusahaan TempUpdatePerusahaan
 	err := json.Unmarshal([]byte(input), &dtPerusahaan)
 	if err != nil {
@@ -604,7 +632,7 @@ func UpdatePerusahaanById(input string) (Response, error) {
 		return res, err
 	}
 
-	query := "UPDATE perusahaan SET username = ?, lokasi=?, tipe=?,modal_awal=?,deskripsi=?,updated_at=NOW() WHERE perusahaan_id = ?"
+	query := "UPDATE perusahaan SET username = ?, lokasi=?, tipe=?,kelas=?,deskripsi=?,updated_at=NOW() WHERE perusahaan_id = ?"
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -614,12 +642,52 @@ func UpdatePerusahaanById(input string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(dtPerusahaan.Username, dtPerusahaan.Lokasi, dtPerusahaan.Tipe, dtPerusahaan.Modal, dtPerusahaan.Deskripsi, dtPerusahaan.Id)
+	_, err = stmt.Exec(dtPerusahaan.Username, dtPerusahaan.Lokasi, dtPerusahaan.Tipe, dtPerusahaan.Kelas, dtPerusahaan.Deskripsi, dtPerusahaan.Id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "exec gagal"
 		res.Data = err.Error()
 		return res, err
+	}
+
+	// update field perusahaan
+	deleteFieldQuery := `DELETE FROM perusahaan_business WHERE id_perusahaan = ?`
+	stmtFieldQuery, err := con.Prepare(deleteFieldQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtFieldQuery.Close()
+	_, err = stmtFieldQuery.Exec(dtPerusahaan.Id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	insertFieldQuery := `INSERT INTO perusahaan_business (id_perusahaan,id_business) VALUES (?,?)`
+
+	tempBusinessField := strings.Split(dtPerusahaan.Field, ",")
+	for _, idField := range tempBusinessField {
+		stmtInsertField, err := con.Prepare(insertFieldQuery)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		defer stmtInsertField.Close()
+		_, err = stmtInsertField.Exec(dtPerusahaan.Id, idField)
+		if err != nil {
+			res.Status = 401
+			res.Message = "exec gagal"
+			res.Data = err.Error()
+			return res, err
+		}
 	}
 
 	res.Status = http.StatusOK
@@ -699,6 +767,22 @@ func AddUserCompany(input string) (Response, error) {
 	if !roleExists {
 		res.Status = 404
 		res.Message = "Role tidak ditemukan"
+		res.Data = nil
+		return res, nil
+	}
+
+	// cek sudah tergabung atau belum
+	var alreadyJoin bool
+	err = con.QueryRow("SELECT EXISTS(SELECT 1 FROM user_perusahaan WHERE id_user = ? AND id_perusahaan = ?)", tempUserCompany.Id_user, tempUserCompany.Id_perusahaan).Scan(&alreadyJoin)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal mengecek user dan perusahaan"
+		res.Data = err.Error()
+		return res, err
+	}
+	if alreadyJoin {
+		res.Status = 404
+		res.Message = "user sudah terdaftar pada perusahaan tersebut"
 		res.Data = nil
 		return res, nil
 	}
@@ -1150,8 +1234,6 @@ func RemoveAssetArchive(input string) (Response, error) {
 
 func LoginPerusahaan(id_perusahaan, id_user string) (Response, error) {
 	var res Response
-
-	fmt.Println("login perusahaan")
 	type TempUser struct {
 		Id               int    `json:"id"`
 		Username         string `json:"username"`

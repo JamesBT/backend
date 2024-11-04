@@ -27,7 +27,6 @@ func createFileLog(namFile string) {
 		defer file.Close()
 	}
 
-	//fmt.Println("==> file berhasil dibuat", path)
 }
 
 func InsertLogs(string2 string) error {

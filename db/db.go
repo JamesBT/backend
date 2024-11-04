@@ -81,7 +81,7 @@ func DbConnection() (*sql.DB, error) {
 		Net:                  "tcp",
 		Addr:                 fmt.Sprintf("%s:%s", hostname, port),
 		DBName:               dbname,
-		TLSConfig:            "true",
+		TLSConfig:            "skip-verify",
 		MultiStatements:      false,
 		Params: map[string]string{
 			"charset": "utf8",
@@ -96,8 +96,6 @@ func DbConnection() (*sql.DB, error) {
 	err = db.Ping()
 
 	if err != nil {
-		fmt.Println("Err :", err)
-		fmt.Println("titdak dapat membuka koneksi")
 		return nil, err
 	}
 

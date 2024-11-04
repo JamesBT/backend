@@ -420,9 +420,6 @@ func EditRole(userRole string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	fmt.Println(dtUserRole.Id_role)
-	fmt.Println(dtUserRole.Role_name)
-	fmt.Println(dtUserRole.Privileges)
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -1202,8 +1199,6 @@ func GetAllPrivRoleByPerusahaanId(id_perusahaan string) (Response, error) {
 		Privilege []Privilege `json:"privilege"`
 	}
 	var arrRole = []TempRole{}
-
-	fmt.Println("get all priv role by perusahaan id")
 
 	roleMap := make(map[int]*TempRole)
 

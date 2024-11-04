@@ -264,6 +264,38 @@ func UpdateAdminById(input string) (Response, error) {
 		return res, err
 	}
 
+	var tempPass string
+	queryPass := "SELECT password FROM user WHERE user_id = ?"
+	stmtPass, err := con.Prepare(queryPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtPass.Close()
+	err = stmtPass.QueryRow(dtTempAdmin.Id).Scan(&tempPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var hashedPass string
+	if tempPass != dtTempAdmin.Password {
+		tempHashedPass, err := bcrypt.GenerateFromPassword([]byte(dtTempAdmin.Password), 10)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		hashedPass = string(tempHashedPass)
+	} else {
+		hashedPass = dtTempAdmin.Password
+	}
+
 	query := "UPDATE user SET `username` = ?, `password` = ?, `nama_lengkap` = ?, `email`= ? , `nomor_telepon` = ? WHERE `user_id` = ? "
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -274,7 +306,7 @@ func UpdateAdminById(input string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtTempAdmin.Username, dtTempAdmin.Password, dtTempAdmin.Nama_lengkap, dtTempAdmin.Email, dtTempAdmin.No_telp, dtTempAdmin.Id)
+	_, err = stmt.Exec(dtTempAdmin.Username, hashedPass, dtTempAdmin.Nama_lengkap, dtTempAdmin.Email, dtTempAdmin.No_telp, dtTempAdmin.Id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
@@ -282,9 +314,20 @@ func UpdateAdminById(input string) (Response, error) {
 		return res, err
 	}
 
+	nId := strconv.Itoa(dtTempAdmin.Id)
+
+	var tempRes Response
+	tempRes, err = GetAdminById(nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "get admin by id gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
 	res.Status = http.StatusOK
 	res.Message = "Berhasil mengupdate data"
-	res.Data = result
+	res.Data = tempRes.Data
 
 	defer db.DbClose(con)
 	return res, nil
@@ -525,8 +568,6 @@ func LoginAdmin(akun string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	fmt.Println("user id: ", userId)
-
 	var tempDBPass string
 	querypass := `SELECT password FROM user WHERE user_id = ?;`
 	stmtpass, err := con.Prepare(querypass)
@@ -619,8 +660,6 @@ func LoginAdmin(akun string) (Response, error) {
 		return res, err
 	}
 	defer rows.Close()
-
-	fmt.Println("role: ", roleId)
 
 	// Array to hold all privileges
 	var privileges []map[string]interface{}

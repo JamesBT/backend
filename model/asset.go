@@ -45,7 +45,6 @@ func CreateAsset(filelegalitas *multipart.FileHeader, suratkuasa *multipart.File
 	usageIds := strings.Split(usage, ",")
 	for _, id := range usageIds {
 		var usageExists bool
-		fmt.Println("usage", id)
 		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
 		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
 		if err != nil || !usageExists {
@@ -59,7 +58,6 @@ func CreateAsset(filelegalitas *multipart.FileHeader, suratkuasa *multipart.File
 	tagIds := strings.Split(tag, ",")
 	for _, id2 := range tagIds {
 		var tagExists bool
-		fmt.Println("tag", id2)
 		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
 		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
 		if err != nil || !tagExists {
@@ -284,7 +282,6 @@ func CreateAssetMultipleFile(filelegalitas *multipart.FileHeader, suratkuasa *mu
 	usageIds := strings.Split(usage, ",")
 	for _, id := range usageIds {
 		var usageExists bool
-		fmt.Println("usage", id)
 		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
 		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
 		if err != nil || !usageExists {
@@ -298,7 +295,6 @@ func CreateAssetMultipleFile(filelegalitas *multipart.FileHeader, suratkuasa *mu
 	tagIds := strings.Split(tag, ",")
 	for _, id2 := range tagIds {
 		var tagExists bool
-		fmt.Println("tag", id2)
 		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
 		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
 		if err != nil || !tagExists {
@@ -520,7 +516,6 @@ func CreateAssetChild(
 	usageIds := strings.Split(usage, ",")
 	for _, id := range usageIds {
 		var usageExists bool
-		fmt.Println("usage", id)
 		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
 		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
 		if err != nil || !usageExists {
@@ -534,7 +529,6 @@ func CreateAssetChild(
 	tagIds := strings.Split(tag, ",")
 	for _, id2 := range tagIds {
 		var tagExists bool
-		fmt.Println("tag", id2)
 		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
 		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
 		if err != nil || !tagExists {
@@ -791,7 +785,6 @@ func CreateAssetChildMultipleGambar(
 	usageIds := strings.Split(usage, ",")
 	for _, id := range usageIds {
 		var usageExists bool
-		fmt.Println("usage", id)
 		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
 		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
 		if err != nil || !usageExists {
@@ -805,7 +798,6 @@ func CreateAssetChildMultipleGambar(
 	tagIds := strings.Split(tag, ",")
 	for _, id2 := range tagIds {
 		var tagExists bool
-		fmt.Println("tag", id2)
 		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
 		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
 		if err != nil || !tagExists {
@@ -1165,6 +1157,294 @@ func GetAllAsset() (Response, error) {
 	return res, nil
 }
 
+func GetAllAssetOthers() (Response, error) {
+	var res Response
+	var arrAset []Asset
+	assetMap := make(map[int]*Asset) // Map to store assets by their id_asset
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+		SELECT a.*, IFNULL(ag.link_gambar,'') as link_gambar
+		FROM asset a
+		LEFT JOIN asset_gambar ag ON a.id_asset = ag.id_asset_gambar
+		LEFT JOIN asset_penggunaan ap ON a.id_asset = ap.id_asset
+		LEFT JOIN penggunaan p ON ap.id_penggunaan = p.id
+		WHERE a.deleted_at IS NULL AND p.id = 10
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+
+	var masaSewa, deleteAt []byte
+	var linkGambar sql.NullString
+	var idJoin, idAssetChild, tipe sql.NullString
+	var idAssetParent, idProvinsi sql.NullInt32
+
+	for result.Next() {
+		var dtAset Asset
+		err = result.Scan(
+			&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset,
+			&dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat,
+			&dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan,
+			&dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at,
+			&deleteAt, &linkGambar)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		// Handle potential null values
+		if masaSewa != nil {
+			masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(masaSewa))
+			if masaSewaErr != nil {
+				dtAset.Masa_sewa = ""
+			} else {
+				dtAset.Masa_sewa = masaSewaWaktu.Format("2006-01-02 15:04:05")
+			}
+		} else {
+			dtAset.Masa_sewa = ""
+		}
+
+		if deleteAt != nil {
+			parsedTime, parseErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+			if parseErr != nil {
+				dtAset.Deleted_at = ""
+			} else {
+				dtAset.Deleted_at = parsedTime.Format("2006-01-02 15:04:05")
+			}
+		} else {
+			dtAset.Deleted_at = ""
+		}
+		if tipe.Valid {
+			dtAset.Tipe = tipe.String
+		} else {
+			dtAset.Tipe = ""
+		}
+		if idAssetParent.Valid {
+			dtAset.Id_asset_parent = int(idAssetParent.Int32)
+		} else {
+			dtAset.Id_asset_parent = 0
+		}
+		if idAssetChild.Valid {
+			dtAset.Id_asset_child = idAssetChild.String
+		} else {
+			dtAset.Id_asset_child = ""
+		}
+		if idJoin.Valid {
+			dtAset.Id_join = idJoin.String
+		} else {
+			dtAset.Id_join = "0"
+		}
+		if idProvinsi.Valid {
+			dtAset.Provinsi = int(idProvinsi.Int32)
+		} else {
+			dtAset.Provinsi = 0
+		}
+
+		// Check if the asset already exists in the map
+		if asset, exists := assetMap[dtAset.Id_asset]; exists {
+			// If asset exists, append the image to its list
+			if linkGambar.Valid && linkGambar.String != "" {
+				asset.LinkGambar = append(asset.LinkGambar, linkGambar.String)
+			}
+		} else {
+			// If it's a new asset, initialize the LinkGambar slice and add it to the map
+			if linkGambar.Valid && linkGambar.String != "" {
+				dtAset.LinkGambar = []string{linkGambar.String}
+			} else {
+				dtAset.LinkGambar = []string{}
+			}
+			assetMap[dtAset.Id_asset] = &dtAset
+		}
+	}
+
+	// Convert map to slice
+	for _, asset := range assetMap {
+		// Ensure that LinkGambar is truly empty if no valid images were found
+		if len(asset.LinkGambar) == 1 && asset.LinkGambar[0] == "" {
+			asset.LinkGambar = []string{}
+		}
+		arrAset = append(arrAset, *asset)
+	}
+
+	// Sort arrAset by Id_asset
+	sort.Slice(arrAset, func(i, j int) bool {
+		return arrAset[i].Id_asset < arrAset[j].Id_asset
+	})
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrAset
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllAssetDitawarkan() (Response, error) {
+	var res Response
+	var arrAset []Asset
+	assetMap := make(map[int]*Asset) // Map to store assets by their id_asset
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `SELECT a.*, IFNULL(ag.link_gambar,'') as link_gambar
+			  FROM asset a
+			  LEFT JOIN asset_gambar ag ON a.id_asset = ag.id_asset_gambar
+			  WHERE a.deleted_at IS NULL AND a.status_publik = 'Y'`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+
+	var masaSewa, deleteAt []byte
+	var linkGambar sql.NullString
+	var idJoin, idAssetChild, tipe sql.NullString
+	var idAssetParent, idProvinsi sql.NullInt32
+
+	for result.Next() {
+		var dtAset Asset
+		err = result.Scan(
+			&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset,
+			&dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat,
+			&dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan,
+			&dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at,
+			&deleteAt, &linkGambar)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		// Handle potential null values
+		if masaSewa != nil {
+			masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(masaSewa))
+			if masaSewaErr != nil {
+				dtAset.Masa_sewa = ""
+			} else {
+				dtAset.Masa_sewa = masaSewaWaktu.Format("2006-01-02 15:04:05")
+			}
+		} else {
+			dtAset.Masa_sewa = ""
+		}
+
+		if deleteAt != nil {
+			parsedTime, parseErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+			if parseErr != nil {
+				dtAset.Deleted_at = ""
+			} else {
+				dtAset.Deleted_at = parsedTime.Format("2006-01-02 15:04:05")
+			}
+		} else {
+			dtAset.Deleted_at = ""
+		}
+		if tipe.Valid {
+			dtAset.Tipe = tipe.String
+		} else {
+			dtAset.Tipe = ""
+		}
+		if idAssetParent.Valid {
+			dtAset.Id_asset_parent = int(idAssetParent.Int32)
+		} else {
+			dtAset.Id_asset_parent = 0
+		}
+		if idAssetChild.Valid {
+			dtAset.Id_asset_child = idAssetChild.String
+		} else {
+			dtAset.Id_asset_child = ""
+		}
+		if idJoin.Valid {
+			dtAset.Id_join = idJoin.String
+		} else {
+			dtAset.Id_join = "0"
+		}
+		if idProvinsi.Valid {
+			dtAset.Provinsi = int(idProvinsi.Int32)
+		} else {
+			dtAset.Provinsi = 0
+		}
+
+		// Check if the asset already exists in the map
+		if asset, exists := assetMap[dtAset.Id_asset]; exists {
+			// If asset exists, append the image to its list
+			if linkGambar.Valid && linkGambar.String != "" {
+				asset.LinkGambar = append(asset.LinkGambar, linkGambar.String)
+			}
+		} else {
+			// If it's a new asset, initialize the LinkGambar slice and add it to the map
+			if linkGambar.Valid && linkGambar.String != "" {
+				dtAset.LinkGambar = []string{linkGambar.String}
+			} else {
+				dtAset.LinkGambar = []string{}
+			}
+			assetMap[dtAset.Id_asset] = &dtAset
+		}
+	}
+
+	// Convert map to slice
+	for _, asset := range assetMap {
+		// Ensure that LinkGambar is truly empty if no valid images were found
+		if len(asset.LinkGambar) == 1 && asset.LinkGambar[0] == "" {
+			asset.LinkGambar = []string{}
+		}
+		arrAset = append(arrAset, *asset)
+	}
+
+	// Sort arrAset by Id_asset
+	sort.Slice(arrAset, func(i, j int) bool {
+		return arrAset[i].Id_asset < arrAset[j].Id_asset
+	})
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrAset
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
 func GetAssetById(aset_id string) (Response, error) {
 	var res Response
 	var dtAset Asset
@@ -1199,8 +1479,6 @@ func GetAssetById(aset_id string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	fmt.Println("ambil berhasil")
-
 	if masaSewa != nil {
 		masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
 		if masaSewaErr != nil {
@@ -1359,7 +1637,6 @@ func GetAssetChildByParentId(aset_id string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	fmt.Println("ambil berhasil")
 
 	var arrAset []Asset
 	if idAssetChild.Valid {
@@ -1445,7 +1722,6 @@ func GetAssetChildByParentId(aset_id string) (Response, error) {
 func GetAssetDetailedById(aset_id string) (Response, error) {
 	var res Response
 
-	fmt.Println("get aset detailed by id")
 	// ambil data parent
 	con, err := db.DbConnection()
 	if err != nil {
@@ -1471,8 +1747,9 @@ func GetAssetDetailedById(aset_id string) (Response, error) {
 	return res, nil
 }
 
-func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
-	var dtAset Asset
+func fetchAssetDetailed(con *sql.DB, aset_id string) (AssetCustom, error) {
+
+	var dtAset AssetCustom
 
 	query := "SELECT * FROM asset WHERE id_asset = ? AND deleted_at IS NULL"
 	stmt, err := con.Prepare(query)
@@ -1539,26 +1816,24 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 		dtAset.Provinsi = 0
 	}
 
-	fmt.Println("ambil gambar")
-	gambarQuery := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
+	gambarQuery := "SELECT link_gambar,status_gambar FROM asset_gambar WHERE id_asset_gambar = ? AND status_gambar = 'Y'"
 	rows, err := con.Query(gambarQuery, nId)
 	if err != nil {
 		return dtAset, err
 	}
 	defer rows.Close()
 
-	var gambarLinks []string
+	var gambarLinks []AssetGambarCustom
 	for rows.Next() {
-		var link string
-		err := rows.Scan(&link)
+		var tempGambar AssetGambarCustom
+		err := rows.Scan(&tempGambar.Link_gambar, &tempGambar.Status)
 		if err != nil {
 			return dtAset, err
 		}
-		gambarLinks = append(gambarLinks, link)
+		gambarLinks = append(gambarLinks, tempGambar)
 	}
 	dtAset.LinkGambar = gambarLinks
 
-	fmt.Println("ambil usage")
 	usageQuery := "SELECT p.id,p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
 	rowsusage, err := con.Query(usageQuery, nId)
 	if err != nil {
@@ -1577,7 +1852,6 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	}
 	dtAset.Usage = usage
 
-	fmt.Println("ambil tag")
 	tagsQuery := "SELECT t.id,t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
 	tagsRows, err := con.Query(tagsQuery, nId)
 	if err != nil {
@@ -1596,10 +1870,189 @@ func fetchAssetDetailed(con *sql.DB, aset_id string) (Asset, error) {
 	}
 	dtAset.TagsAssets = tags
 
-	fmt.Println("ambil child")
-	fmt.Println("id ", dtAset.Id_asset)
 	childIds := strings.Split(dtAset.Id_asset_child, ",")
-	fmt.Println("ambil child id", childIds)
+	for _, childId := range childIds {
+		trimmedChildId := strings.TrimSpace(childId)
+
+		var deletedAt sql.NullString
+		checkQuery := "SELECT deleted_at FROM asset WHERE id_asset = ?"
+		err := con.QueryRow(checkQuery, trimmedChildId).Scan(&deletedAt)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				fmt.Printf("Child asset %s not found, skipping.\n", trimmedChildId)
+				continue
+			}
+			return dtAset, err
+		}
+
+		if deletedAt.Valid {
+			fmt.Printf("Skipping child asset %s because it has been deleted.\n", trimmedChildId)
+			continue
+		}
+
+		childAset, err := fetchAssetDetailed(con, trimmedChildId)
+		if err != nil {
+			return dtAset, err
+		}
+
+		dtAset.ChildAssets = append(dtAset.ChildAssets, childAset)
+	}
+
+	return dtAset, nil
+}
+
+func GetAssetDetailedByIdAllGambar(aset_id string) (Response, error) {
+	var res Response
+
+	// ambil data parent
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	dtAset, err := fetchAssetDetailedAllGambar(con, aset_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Failed to fetch asset details"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = dtAset
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func fetchAssetDetailedAllGambar(con *sql.DB, aset_id string) (AssetCustom, error) {
+
+	var dtAset AssetCustom
+
+	query := "SELECT * FROM asset WHERE id_asset = ? AND deleted_at IS NULL"
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		return dtAset, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(aset_id)
+	var masaSewa []byte
+	var deleteAt []byte
+	var idJoin, idAssetChild, tipe sql.NullString
+	var idAssetParent, idProvinsi sql.NullInt32
+	err = stmt.QueryRow(nId).Scan(
+		&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt)
+	if err != nil {
+		return dtAset, err
+	}
+
+	if masaSewa != nil {
+		masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+		if masaSewaErr != nil {
+			dtAset.Deleted_at = ""
+		} else {
+			dtAset.Deleted_at = masaSewaWaktu.Format("2006-01-02 15:04:05")
+		}
+	} else {
+		dtAset.Deleted_at = ""
+	}
+
+	if deleteAt != nil {
+		parsedTime, parseErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+		if parseErr != nil {
+			dtAset.Deleted_at = ""
+		} else {
+			dtAset.Deleted_at = parsedTime.Format("2006-01-02 15:04:05")
+		}
+	} else {
+		dtAset.Deleted_at = ""
+	}
+	if tipe.Valid {
+		dtAset.Tipe = tipe.String
+	} else {
+		dtAset.Tipe = ""
+	}
+	if idAssetParent.Valid {
+		dtAset.Id_asset_parent = int(idAssetParent.Int32)
+	} else {
+		dtAset.Id_asset_parent = 0
+	}
+	if idAssetChild.Valid {
+		dtAset.Id_asset_child = idAssetChild.String
+	} else {
+		dtAset.Id_asset_child = ""
+	}
+	if idJoin.Valid {
+		dtAset.Id_join = idJoin.String
+	} else {
+		dtAset.Id_join = "0"
+	}
+	if idProvinsi.Valid {
+		dtAset.Provinsi = int(idProvinsi.Int32)
+	} else {
+		dtAset.Provinsi = 0
+	}
+
+	gambarQuery := "SELECT link_gambar,status_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
+	rows, err := con.Query(gambarQuery, nId)
+	if err != nil {
+		return dtAset, err
+	}
+	defer rows.Close()
+
+	var gambarLinks []AssetGambarCustom
+	for rows.Next() {
+		var tempGambar AssetGambarCustom
+		err := rows.Scan(&tempGambar.Link_gambar, &tempGambar.Status)
+		if err != nil {
+			return dtAset, err
+		}
+		gambarLinks = append(gambarLinks, tempGambar)
+	}
+	dtAset.LinkGambar = gambarLinks
+
+	usageQuery := "SELECT p.id,p.nama FROM asset_penggunaan ap JOIN penggunaan p ON ap.id_penggunaan = p.id WHERE ap.id_asset = ?"
+	rowsusage, err := con.Query(usageQuery, nId)
+	if err != nil {
+		return dtAset, err
+	}
+	defer rowsusage.Close()
+
+	var usage []Kegunaan
+	for rowsusage.Next() {
+		var link Kegunaan
+		err := rowsusage.Scan(&link.Id, &link.Nama)
+		if err != nil {
+			return dtAset, err
+		}
+		usage = append(usage, link)
+	}
+	dtAset.Usage = usage
+
+	tagsQuery := "SELECT t.id,t.nama FROM asset_tags at JOIN tags t ON at.id_tags = t.id WHERE at.id_asset = ?"
+	tagsRows, err := con.Query(tagsQuery, nId)
+	if err != nil {
+		return dtAset, err
+	}
+	defer tagsRows.Close()
+
+	var tags []Tags
+	for tagsRows.Next() {
+		var tag Tags
+		err := tagsRows.Scan(&tag.Id, &tag.Nama)
+		if err != nil {
+			return dtAset, err
+		}
+		tags = append(tags, tag)
+	}
+	dtAset.TagsAssets = tags
+
+	childIds := strings.Split(dtAset.Id_asset_child, ",")
 	for _, childId := range childIds {
 		trimmedChildId := strings.TrimSpace(childId)
 
@@ -1712,10 +2165,8 @@ func GetAssetDetailedByPerusahaanId(perusahaan_id string) (Response, error) {
 	return res, nil
 }
 
-func fetchAssetsByPerusahaanId(con *sql.DB, perusahaan_id string) ([]Asset, error) {
-	var assets []Asset
-
-	fmt.Println("Fetching assets by perusahaan_id:", perusahaan_id)
+func fetchAssetsByPerusahaanId(con *sql.DB, perusahaan_id string) ([]AssetCustom, error) {
+	var assets []AssetCustom
 
 	query := `
 	SELECT a.* 
@@ -1731,7 +2182,7 @@ func fetchAssetsByPerusahaanId(con *sql.DB, perusahaan_id string) ([]Asset, erro
 	defer rows.Close()
 
 	for rows.Next() {
-		var dtAset Asset
+		var dtAset AssetCustom
 		var masaSewa, deleteAt []byte
 		var idJoin, idAssetChild sql.NullString
 		var idAssetParent, idProvinsi sql.NullInt32
@@ -1798,8 +2249,8 @@ func ifValidString(value sql.NullString) string {
 }
 
 // Fetch related gambar links
-func fetchGambarLinks(con *sql.DB, assetID int) ([]string, error) {
-	var links []string
+func fetchGambarLinks(con *sql.DB, assetID int) ([]AssetGambarCustom, error) {
+	var links []AssetGambarCustom
 	query := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
 	rows, err := con.Query(query, assetID)
 	if err != nil {
@@ -1808,8 +2259,8 @@ func fetchGambarLinks(con *sql.DB, assetID int) ([]string, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var link string
-		if err := rows.Scan(&link); err != nil {
+		var link AssetGambarCustom
+		if err := rows.Scan(&link.Link_gambar); err != nil {
 			return nil, err
 		}
 		links = append(links, link)
@@ -1858,8 +2309,8 @@ func fetchTags(con *sql.DB, assetID int) ([]Tags, error) {
 }
 
 // Fetch child assets
-func fetchChildAssets(con *sql.DB, parentID int) ([]Asset, error) {
-	var childAssets []Asset
+func fetchChildAssets(con *sql.DB, parentID int) ([]AssetCustom, error) {
+	var childAssets []AssetCustom
 
 	// Fetch the id_asset_child field for the given parent asset.
 	query := "SELECT id_asset_child FROM asset WHERE id_asset = ?"
@@ -1867,15 +2318,13 @@ func fetchChildAssets(con *sql.DB, parentID int) ([]Asset, error) {
 
 	if err := con.QueryRow(query, parentID).Scan(&idAssetChild); err != nil {
 		if err == sql.ErrNoRows {
-			fmt.Println("No child assets found for parent ID:", parentID)
-			return []Asset{}, nil // Return an empty slice if no children are found.
+			return []AssetCustom{}, nil
 		}
 		return nil, fmt.Errorf("failed to fetch id_asset_child: %w", err)
 	}
 
 	if !idAssetChild.Valid || idAssetChild.String == "" {
-		fmt.Println("No child asset IDs for parent ID:", parentID)
-		return []Asset{}, nil
+		return []AssetCustom{}, nil
 	}
 
 	// Split the comma-separated child IDs.
@@ -1893,20 +2342,15 @@ func fetchChildAssets(con *sql.DB, parentID int) ([]Asset, error) {
 			return nil, fmt.Errorf("failed to fetch child asset %d: %w", childID, err)
 		}
 
-		fmt.Println("Child Asset ID:", childID)
-		fmt.Println("Child Asset:", child)
-
 		childAssets = append(childAssets, child)
 	}
 
-	fmt.Println("All Child Assets:", childAssets)
 	return childAssets, nil
 }
 
 func GetAssetDetailedByUserId(perusahaan_id string) (Response, error) {
 	var res Response
 
-	fmt.Println("get aset detailed by id")
 	// ambil data parent
 	con, err := db.DbConnection()
 	if err != nil {
@@ -1932,8 +2376,8 @@ func GetAssetDetailedByUserId(perusahaan_id string) (Response, error) {
 	return res, nil
 }
 
-func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
-	var arrAset []Asset
+func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]AssetCustom, error) {
+	var arrAset []AssetCustom
 
 	queryPerusahaan := `
 		SELECT id_perusahaan 
@@ -1966,7 +2410,6 @@ func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
 		LEFT JOIN asset a ON tr.id_asset = a.id_asset
 		WHERE tr.perusahaan_id = ?
 		`
-		fmt.Println(perusahaanId)
 		rowsAssets, err := con.Query(query, perusahaanId)
 		if err != nil {
 			return nil, err
@@ -1974,7 +2417,7 @@ func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
 		defer rowsAssets.Close()
 
 		for rowsAssets.Next() {
-			var dtAset Asset
+			var dtAset AssetCustom
 			var masaSewa, deleteAt []byte
 			var idJoin, idAssetChild sql.NullString
 			var idAssetParent, idProvinsi sql.NullInt32
@@ -2042,8 +2485,8 @@ func fetchAssetDetailedByUserId(con *sql.DB, user_id string) ([]Asset, error) {
 			defer imageRows.Close()
 
 			for imageRows.Next() {
-				var linkGambar string
-				err := imageRows.Scan(&linkGambar)
+				var linkGambar AssetGambarCustom
+				err := imageRows.Scan(&linkGambar.Link_gambar)
 				if err != nil {
 					return nil, err
 				}
@@ -2244,9 +2687,6 @@ func JoinAsset(input string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-
-	fmt.Println(tempjoinAsset.IdAsset1)
-	fmt.Println(tempjoinAsset.IdAsset2)
 
 	var dtAsset1 Asset
 	var dtAsset2 Asset
@@ -2532,8 +2972,6 @@ func JoinAsset(input string) (Response, error) {
 		return res, nil
 	}
 
-	fmt.Println("gabung aset")
-
 	luasBaru := dtAsset1.Luas + dtAsset2.Luas
 	nilaiBaru := dtAsset1.Nilai + dtAsset2.Nilai
 	if dtAsset1.Provinsi != dtAsset2.Provinsi {
@@ -2788,7 +3226,7 @@ func GetAssetSurveyHistoryByAssetId(assetId string) (Response, error) {
 	SELECT sr.created_at,u.nama_lengkap,sr.nilai_old,sr.nilai_new,sr.kondisi_old, sr.kondisi_new
 	FROM survey_request sr
 	LEFT JOIN user u ON sr.user_id = u.user_id
-	WHERE sr.id_asset = ?
+	WHERE sr.id_asset = ? AND sr.status_verifikasi = 'V'
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -2891,7 +3329,6 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 	usageIds := strings.Split(usage, ",")
 	for _, id := range usageIds {
 		var usageExists bool
-		fmt.Println("usage", id)
 		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
 		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
 		if err != nil || !usageExists {
@@ -2905,7 +3342,6 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 	tagIds := strings.Split(tag, ",")
 	for _, id2 := range tagIds {
 		var tagExists bool
-		fmt.Println("tag", id2)
 		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
 		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
 		if err != nil || !tagExists {
@@ -2934,7 +3370,6 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 		return res, err
 	}
 
-	fmt.Println("query update")
 	query := `
 	UPDATE asset 
 	SET nama = ?, tipe = ?, nomor_legalitas = ?, status_asset = ?, surat_legalitas = ?, alamat = ?, kondisi = ?, titik_koordinat = ?,
@@ -2959,12 +3394,9 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 		return res, err
 	}
 
-	fmt.Println("tambah usage")
-
 	// tambah usage + tags
 	for _, usageId := range usageIds {
 		usageQuery := "INSERT INTO asset_penggunaan (id_asset, id_penggunaan) VALUES (?, ?)"
-		fmt.Println("usage id: ", id_asset, usageId)
 		_, err = con.Exec(usageQuery, id_asset, usageId)
 		if err != nil {
 			res.Status = 401
@@ -2973,7 +3405,6 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 			return res, err
 		}
 	}
-	fmt.Println("tambah tags")
 
 	for _, tagId := range tagIds {
 		tagQuery := "INSERT INTO asset_tags (id_asset, id_tags) VALUES (?, ?)"
@@ -2985,7 +3416,6 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 			return res, err
 		}
 	}
-	fmt.Println("tambah file legalitas")
 
 	// tambah filelegalitas
 	//source
@@ -3079,7 +3509,7 @@ func UpdateAssetByIdWithoutGambar(filelegalitas *multipart.FileHeader, suratkuas
 
 func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.FileHeader,
 	id_asset, nama, surat_legalitas, tipe, usage, tag, nomor_legalitas, status,
-	alamat, kondisi, koordinat, batas_koordinat, luas, nilai, provinsi string, files []*multipart.FileHeader) (Response, error) {
+	alamat, kondisi, koordinat, batas_koordinat, luas, nilai, provinsi, status_gambar string, files []*multipart.FileHeader) (Response, error) {
 	var res Response
 	con, err := db.DbConnection()
 	if err != nil {
@@ -3092,7 +3522,6 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 	usageIds := strings.Split(usage, ",")
 	for _, id := range usageIds {
 		var usageExists bool
-		fmt.Println("usage", id)
 		usageQuery := "SELECT EXISTS(SELECT 1 FROM penggunaan WHERE id = ?)"
 		err = con.QueryRow(usageQuery, id).Scan(&usageExists)
 		if err != nil || !usageExists {
@@ -3106,7 +3535,6 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 	tagIds := strings.Split(tag, ",")
 	for _, id2 := range tagIds {
 		var tagExists bool
-		fmt.Println("tag", id2)
 		tagQuery := "SELECT EXISTS(SELECT 1 FROM tags WHERE id = ?)"
 		err = con.QueryRow(tagQuery, id2).Scan(&tagExists)
 		if err != nil || !tagExists {
@@ -3199,7 +3627,6 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 		return res, err
 	}
 
-	fmt.Println("query update")
 	query := `
 	UPDATE asset 
 	SET nama = ?, tipe = ?, nomor_legalitas = ?, status_asset = ?, surat_legalitas = ?, alamat = ?, kondisi = ?, titik_koordinat = ?,
@@ -3229,6 +3656,7 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 	// ambil foto aset dan hapus
 	filePaths := []string{}
 	for _, fileHeader := range files {
+
 		filePath, err := updateAssetGambar(id_asset, fileHeader)
 		if err != nil {
 			res.Status = 500
@@ -3239,10 +3667,12 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 		filePaths = append(filePaths, filePath)
 	}
 
-	for _, filePath := range filePaths {
+	tempStatusGambar := strings.Split(status_gambar, ",")
+
+	for i, filePath := range filePaths {
 		// Prepare the INSERT statement for each filePath
-		insertImageQuery := "INSERT INTO asset_gambar (id_asset_gambar, link_gambar) VALUES (?, ?)"
-		_, err = con.Exec(insertImageQuery, id_asset, filePath)
+		insertImageQuery := "INSERT INTO asset_gambar (id_asset_gambar, link_gambar, status_gambar ) VALUES (?, ?, ?)"
+		_, err = con.Exec(insertImageQuery, id_asset, filePath, tempStatusGambar[i])
 		if err != nil {
 			// Handle the error if the insert fails
 			res.Status = 500
@@ -3251,12 +3681,10 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 			return res, err
 		}
 	}
-	fmt.Println("tambah usage")
 
 	// tambah usage + tags
 	for _, usageId := range usageIds {
 		usageQuery := "INSERT INTO asset_penggunaan (id_asset, id_penggunaan) VALUES (?, ?)"
-		fmt.Println("usage id: ", id_asset, usageId)
 		_, err = con.Exec(usageQuery, id_asset, usageId)
 		if err != nil {
 			res.Status = 401
@@ -3265,7 +3693,6 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 			return res, err
 		}
 	}
-	fmt.Println("tambah tags")
 
 	for _, tagId := range tagIds {
 		tagQuery := "INSERT INTO asset_tags (id_asset, id_tags) VALUES (?, ?)"
@@ -3277,7 +3704,6 @@ func UpdateAssetById(filelegalitas *multipart.FileHeader, suratkuasa *multipart.
 			return res, err
 		}
 	}
-	fmt.Println("tambah file legalitas")
 
 	// tambah filelegalitas
 	//source
@@ -3426,7 +3852,6 @@ func UnjoinAsset(asetId string) (Response, error) {
 		return res, err
 	}
 
-	fmt.Println("update asset")
 	// update asset
 	query := `
 	UPDATE asset 
@@ -3563,6 +3988,189 @@ func FilterAsset(input string) (Response, error) {
 	}
 
 	query := `SELECT * FROM asset WHERE deleted_at IS NULL`
+	params := []interface{}{}
+	if tempInput.Tipe != "" {
+		tipeList := strings.Split(tempInput.Tipe, ",")
+		query += " AND tipe IN (?" + strings.Repeat(",?", len(tipeList)-1) + ")"
+		for _, t := range tipeList {
+			params = append(params, strings.TrimSpace(t))
+		}
+	}
+	if tempInput.Status != "" {
+		statusList := strings.Split(tempInput.Status, ",")
+		query += " AND status_asset IN (?" + strings.Repeat(",?", len(statusList)-1) + ")"
+		for _, s := range statusList {
+			params = append(params, strings.TrimSpace(s))
+		}
+	}
+	if tempInput.Tagasset != "" {
+		tagList := strings.Split(tempInput.Tagasset, ",")
+		query += `
+		AND id_asset IN (
+			SELECT id_asset 
+			FROM asset_tags 
+			WHERE id_tags IN ( ` + strings.Repeat("?,", len(tagList)-1) + "?))"
+		for _, tag := range tagList {
+			params = append(params, strings.TrimSpace(tag))
+		}
+	}
+	if tempInput.Provinsiasset != "" {
+		provinsiList := strings.Split(tempInput.Provinsiasset, ",")
+		query += " AND provinsi IN (?" + strings.Repeat(",?", len(provinsiList)-1) + ")"
+		for _, p := range provinsiList {
+			params = append(params, strings.TrimSpace(p))
+		}
+	}
+
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(params...)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer rows.Close()
+
+	// Process the results
+	var assets []Asset
+	for rows.Next() {
+		var dtAset Asset
+		var masaSewa []byte
+		var deleteAt []byte
+		var idJoin, idAssetChild sql.NullString
+		var idAssetParent, idProvinsi sql.NullInt32
+		err := rows.Scan(&dtAset.Id_asset, &idAssetParent, &idAssetChild, &idJoin, &dtAset.Nama, &dtAset.Tipe, &dtAset.Nomor_legalitas, &dtAset.File_legalitas, &dtAset.Status_asset, &dtAset.Surat_kuasa, &dtAset.Surat_legalitas, &dtAset.Alamat, &dtAset.Kondisi, &dtAset.Titik_koordinat, &dtAset.Batas_koordinat, &dtAset.Luas, &dtAset.Nilai, &idProvinsi, &dtAset.Status_pengecekan, &dtAset.Status_verifikasi, &dtAset.Status_publik, &dtAset.Hak_akses, &masaSewa, &dtAset.Created_at, &deleteAt) // Add appropriate fields here
+		if err != nil {
+			res.Status = 401
+			res.Message = "scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		if masaSewa != nil {
+			masaSewaWaktu, masaSewaErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+			if masaSewaErr != nil {
+				dtAset.Deleted_at = ""
+			} else {
+				dtAset.Deleted_at = masaSewaWaktu.Format("2006-01-02 15:04:05")
+			}
+		} else {
+			dtAset.Deleted_at = ""
+		}
+
+		if deleteAt != nil {
+			parsedTime, parseErr := time.Parse("2006-01-02 15:04:05", string(deleteAt))
+			if parseErr != nil {
+				dtAset.Deleted_at = ""
+			} else {
+				dtAset.Deleted_at = parsedTime.Format("2006-01-02 15:04:05")
+			}
+		} else {
+			dtAset.Deleted_at = ""
+		}
+		if idAssetParent.Valid {
+			dtAset.Id_asset_parent = int(idAssetParent.Int32)
+		} else {
+			dtAset.Id_asset_parent = 0
+		}
+		if idAssetChild.Valid {
+			dtAset.Id_asset_child = idAssetChild.String
+		} else {
+			dtAset.Id_asset_child = ""
+		}
+		if idJoin.Valid {
+			dtAset.Id_join = idJoin.String
+		} else {
+			dtAset.Id_join = "0"
+		}
+		if idProvinsi.Valid {
+			dtAset.Provinsi = int(idProvinsi.Int32)
+		} else {
+			dtAset.Provinsi = 0
+		}
+
+		gambarQuery := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
+		rows, err := con.Query(gambarQuery, dtAset.Id_asset)
+		if err != nil {
+			res.Status = 401
+			res.Message = "gagal mengambil gambar"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer rows.Close()
+
+		var gambarLinks []string
+		for rows.Next() {
+			var link string
+			err := rows.Scan(&link)
+			if err != nil {
+				res.Status = 401
+				res.Message = "gagal membaca gambar"
+				res.Data = err.Error()
+				return res, err
+			}
+			gambarLinks = append(gambarLinks, link)
+		}
+		dtAset.LinkGambar = gambarLinks
+
+		assets = append(assets, dtAset)
+	}
+
+	if err = rows.Err(); err != nil {
+		res.Status = 401
+		res.Message = "rows error"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data asset berdasarkan filter"
+	if len(assets) == 0 {
+		res.Data = []Asset{}
+	} else {
+		res.Data = assets
+	}
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func FilterAssetSewa(input string) (Response, error) {
+	var res Response
+
+	type InputFilter struct {
+		Tipe          string `json:"type"`
+		Status        string `json:"status"`
+		Tagasset      string `json:"tag"`
+		Provinsiasset string `json:"provinsi"`
+	}
+
+	var tempInput InputFilter
+	err := json.Unmarshal([]byte(input), &tempInput)
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal decode json"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `SELECT * FROM asset WHERE deleted_at IS NULL AND status_asset = 'S' AND status_publik ='Y'`
 	params := []interface{}{}
 	if tempInput.Tipe != "" {
 		tipeList := strings.Split(tempInput.Tipe, ",")

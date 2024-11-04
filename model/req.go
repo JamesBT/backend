@@ -43,166 +43,177 @@ func CreateSurveyReq(surat *multipart.FileHeader, sender_id, user_id, id_asset, 
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(dtSurveyReq.User_id, dtSurveyReq.Id_asset, dtSurveyReq.Dateline)
-	if err != nil {
-		res.Status = 401
-		res.Message = "exec gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	lastId, err := result.LastInsertId()
-	if err != nil {
-		res.Status = 401
-		res.Message = "Last Id gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	fmt.Println("ambil data tags dan usage")
-
-	// ambil data aset dan update bagian lama
-	var nama, nilai, kondisi, batas_koordinat, titik_koordinat string
-	var luas float64
-	var tags []string
-	var usages []string
-
-	queryAsset := "SELECT id_penggunaan FROM asset_penggunaan WHERE id_asset = ?"
-	rowtags, err := con.Query(queryAsset, dtSurveyReq.Id_asset)
-	if err != nil {
-		res.Status = 401
-		res.Message = "query gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer rowtags.Close()
-	for rowtags.Next() {
-		var usage string
-		if err := rowtags.Scan(&usage); err != nil {
+	tempSurat := surat.Filename
+	asssets := strings.Split(id_asset, ",")
+	for _, tempIdAsset := range asssets {
+		insertStmt, err := con.Prepare(query)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Stmt gagal"
+			res.Data = err.Error()
 			return res, err
 		}
-		usages = append(usages, usage)
-	}
+		defer insertStmt.Close()
 
-	queryTags := "SELECT id_tags FROM asset_tags WHERE id_asset = ?"
-	rows, err := con.Query(queryTags, dtSurveyReq.Id_asset)
-	if err != nil {
-		res.Status = 401
-		res.Message = "query gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var tag string
-		if err := rows.Scan(&tag); err != nil {
+		result, err := insertStmt.Exec(dtSurveyReq.User_id, tempIdAsset, dtSurveyReq.Dateline)
+		if err != nil {
+			res.Status = 401
+			res.Message = "Gagal membuat survey request"
+			res.Data = err.Error()
 			return res, err
 		}
-		tags = append(tags, tag)
-	}
-	fmt.Println("update")
 
-	tagsString := strings.Join(tags, ", ")
-	usagesString := strings.Join(usages, ", ")
-
-	queryGETasset := "SELECT nama, luas, nilai, kondisi, batas_koordinat, titik_koordinat FROM asset WHERE id_asset = ?"
-	err = con.QueryRow(queryGETasset, id_asset).Scan(&nama, &luas, &nilai, &kondisi, &batas_koordinat, &titik_koordinat)
-	if err != nil {
-		res.Status = 401
-		res.Message = "query gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-
-	var gambarLinks []string
-	queryGambar := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
-	rowsGambar, err := con.Query(queryGambar, dtSurveyReq.Id_asset)
-	if err != nil {
-		res.Status = 401
-		res.Message = "query gagal"
-		res.Data = err.Error()
-		return res, err
-	}
-	defer rowsGambar.Close()
-
-	for rowsGambar.Next() {
-		var linkGambar string
-		if err := rowsGambar.Scan(&linkGambar); err != nil {
+		lastId, err := result.LastInsertId()
+		if err != nil {
+			res.Status = 401
+			res.Message = "Last Id gagal"
+			res.Data = err.Error()
 			return res, err
 		}
-		gambarLinks = append(gambarLinks, linkGambar)
-	}
 
-	// Convert gambarLinks to a string (comma-separated)
-	gambarOld := strings.Join(gambarLinks, ", ")
+		// ambil data aset dan update bagian lama
+		var nama, nilai, kondisi, batas_koordinat, titik_koordinat string
+		var luas float64
+		var tags []string
+		var usages []string
 
-	updateQuery := `
-		UPDATE survey_request 
-		SET usage_old = ?, luas_old = ?, nilai_old = ?, kondisi_old = ?, batas_koordinat_old = ?, titik_koordinat_old = ?, tags_old = ?, gambar_old = ? 
-		WHERE id_transaksi_jual_sewa = ?
-	`
+		queryAsset := "SELECT id_penggunaan FROM asset_penggunaan WHERE id_asset = ?"
+		rowtags, err := con.Query(queryAsset, tempIdAsset)
+		if err != nil {
+			res.Status = 401
+			res.Message = "query gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer rowtags.Close()
+		for rowtags.Next() {
+			var usage string
+			if err := rowtags.Scan(&usage); err != nil {
+				return res, err
+			}
+			usages = append(usages, usage)
+		}
 
-	_, err = con.Exec(updateQuery, usagesString, luas, nilai, kondisi, batas_koordinat, titik_koordinat, tagsString, gambarOld, lastId)
-	if err != nil {
-		return res, err
-	}
-	fmt.Println("masukin file")
-	dtSurveyReq.Id_transaksi_jual_sewa = int(lastId)
-	dtSurveyReq.Status_request = "O"
+		queryTags := "SELECT id_tags FROM asset_tags WHERE id_asset = ?"
+		rows, err := con.Query(queryTags, tempIdAsset)
+		if err != nil {
+			res.Status = 401
+			res.Message = "query gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer rows.Close()
 
-	nId := strconv.Itoa(int(lastId))
-	// masukin file
-	surat.Filename = nId + "_" + surat.Filename
-	pathFotoFile := "uploads/survey_req/surat/" + surat.Filename
-	//source
-	srcfoto, err := surat.Open()
-	if err != nil {
-		log.Println(err.Error())
-		return res, err
-	}
-	defer srcfoto.Close()
+		for rows.Next() {
+			var tag string
+			if err := rows.Scan(&tag); err != nil {
+				return res, err
+			}
+			tags = append(tags, tag)
+		}
 
-	// Destination
-	dstfoto, err := os.Create("uploads/survey_req/surat/" + surat.Filename)
-	if err != nil {
-		log.Println("2")
-		fmt.Print("2")
-		return res, err
-	}
+		tagsString := strings.Join(tags, ", ")
+		usagesString := strings.Join(usages, ", ")
 
-	// Copy
-	if _, err = io.Copy(dstfoto, srcfoto); err != nil {
-		log.Println(err.Error())
-		log.Println("3")
-		fmt.Print("3")
-		return res, err
-	}
-	dstfoto.Close()
+		queryGETasset := "SELECT nama, luas, nilai, kondisi, batas_koordinat, titik_koordinat FROM asset WHERE id_asset = ?"
+		err = con.QueryRow(queryGETasset, tempIdAsset).Scan(&nama, &luas, &nilai, &kondisi, &batas_koordinat, &titik_koordinat)
+		if err != nil {
+			res.Status = 401
+			res.Message = "query gagal"
+			res.Data = err.Error()
+			return res, err
+		}
 
-	err = UpdateDataFotoPath("survey_request", "surat_penugasan", pathFotoFile, "id_transaksi_jual_sewa", int(lastId))
-	if err != nil {
-		return res, err
-	}
+		var gambarLinks []string
+		queryGambar := "SELECT link_gambar FROM asset_gambar WHERE id_asset_gambar = ?"
+		rowsGambar, err := con.Query(queryGambar, tempIdAsset)
+		if err != nil {
+			res.Status = 401
+			res.Message = "query gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		defer rowsGambar.Close()
 
-	title := "You got a new assignment!"
-	detail := fmt.Sprintf("Please do a survey on : %s", nama)
+		for rowsGambar.Next() {
+			var linkGambar string
+			if err := rowsGambar.Scan(&linkGambar); err != nil {
+				return res, err
+			}
+			gambarLinks = append(gambarLinks, linkGambar)
+		}
 
-	testingString := fmt.Sprintf(`
-	{
-		"user_id_sender": %s,
-		"user_id_receiver": %s,
-		"perusahaan_id_receiver": 0,
-		"notification_title": "%s",
-		"notification_detail": "%s"
-	}
-	`, sender_id, user_id, title, detail)
+		// Convert gambarLinks to a string (comma-separated)
+		gambarOld := strings.Join(gambarLinks, ", ")
 
-	fmt.Println(testingString)
-	res, err = CreateNotification(testingString)
-	if err != nil {
-		res.Status = 401
-		res.Message = "kirim notifikasi gagal"
-		res.Data = err.Error()
-		return res, err
+		updateQuery := `
+			UPDATE survey_request 
+			SET usage_old = ?, luas_old = ?, nilai_old = ?, kondisi_old = ?, batas_koordinat_old = ?, titik_koordinat_old = ?, tags_old = ?, gambar_old = ? 
+			WHERE id_transaksi_jual_sewa = ?
+		`
+
+		_, err = con.Exec(updateQuery, usagesString, luas, nilai, kondisi, batas_koordinat, titik_koordinat, tagsString, gambarOld, lastId)
+		if err != nil {
+			return res, err
+		}
+
+		dtSurveyReq.Id_transaksi_jual_sewa = int(lastId)
+		dtSurveyReq.Status_request = "O"
+
+		nId := strconv.Itoa(int(lastId))
+		// masukin file
+		surat.Filename = nId + "_" + tempSurat
+		pathFotoFile := "uploads/survey_req/surat/" + surat.Filename
+		//source
+		srcfoto, err := surat.Open()
+		if err != nil {
+			log.Println(err.Error())
+			return res, err
+		}
+		defer srcfoto.Close()
+
+		// Destination
+		dstfoto, err := os.Create("uploads/survey_req/surat/" + surat.Filename)
+		if err != nil {
+			log.Println("2")
+			fmt.Print("2")
+			return res, err
+		}
+
+		// Copy
+		if _, err = io.Copy(dstfoto, srcfoto); err != nil {
+			log.Println(err.Error())
+			log.Println("3")
+			fmt.Print("3")
+			return res, err
+		}
+		dstfoto.Close()
+
+		err = UpdateDataFotoPath("survey_request", "surat_penugasan", pathFotoFile, "id_transaksi_jual_sewa", int(lastId))
+		if err != nil {
+			return res, err
+		}
+
+		title := "You got a new assignment!"
+		detail := fmt.Sprintf("Please do a survey on : %s", nama)
+
+		testingString := fmt.Sprintf(`
+		{
+			"user_id_sender": %s,
+			"user_id_receiver": %s,
+			"perusahaan_id_receiver": 0,
+			"notification_title": "%s",
+			"notification_detail": "%s"
+		}
+		`, sender_id, user_id, title, detail)
+
+		res, err = CreateNotification(testingString)
+		if err != nil {
+			res.Status = 401
+			res.Message = "kirim notifikasi gagal"
+			res.Data = err.Error()
+			return res, err
+		}
 	}
 
 	res.Status = http.StatusOK
@@ -360,6 +371,89 @@ func GetAllSurveyReqDetailed() (Response, error) {
 	return res, nil
 }
 
+func CustomGetAllSurveyReqDetailed() (Response, error) {
+	var res Response
+	type tempAllSurveyReqDetail struct {
+		Id_transaksi_jual_sewa int    `json:"id_transaksi_jual_sewa"`
+		Data_lengkap           string `json:"data_lengkap"`
+		Nama_asset             string `json:"nama_asset"`
+		Alamat                 string `json:"alamat"`
+		Id_Surveyor            int    `json:"id_surveyor"`
+		Nama_lengkap           string `json:"nama_lengkap"`
+		Status_request         string `json:"status_request"`
+		Status_verifikasi      string `json:"status_verifikasi"`
+		Surat_penugasan        string `json:"surat"`
+		Dateline               string `json:"dateline"`
+	}
+	var arrSurveyReq = []tempAllSurveyReqDetail{}
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+		SELECT sr.id_transaksi_jual_sewa, sr.data_lengkap, a.nama, a.alamat,
+			s.suveyor_id, u.nama_lengkap,
+			sr.status_request, sr.status_verifikasi, sr.surat_penugasan, sr.dateline
+		FROM survey_request sr
+		LEFT JOIN asset a ON sr.id_asset = a.id_asset
+		LEFT JOIN user u ON sr.user_id = u.user_id
+		LEFT JOIN surveyor s ON sr.user_id = s.user_id
+		WHERE sr.status_submitted = 'Y'
+		ORDER BY 
+			CASE 
+				WHEN sr.status_verifikasi IN ('N', 'R') THEN 0
+				WHEN sr.status_verifikasi = 'V' THEN 1
+				ELSE 2
+			END, 
+			sr.dateline
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	for rows.Next() {
+		var dtSurveyReq tempAllSurveyReqDetail
+		err := rows.Scan(
+			&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.Data_lengkap, &dtSurveyReq.Nama_asset, &dtSurveyReq.Alamat,
+			&dtSurveyReq.Id_Surveyor, &dtSurveyReq.Nama_lengkap, &dtSurveyReq.Status_request,
+			&dtSurveyReq.Status_verifikasi, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Dateline,
+		)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		arrSurveyReq = append(arrSurveyReq, dtSurveyReq)
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrSurveyReq
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
 func GetSurveyReqById(surveyreq_id string) (Response, error) {
 	var res Response
 	var dtSurveyReq SurveyRequest
@@ -379,7 +473,7 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
        sr.usage_old, sr.usage_new, sr.luas_old, sr.luas_new, sr.nilai_old, sr.nilai_new,
        sr.kondisi_old, sr.kondisi_new, sr.titik_koordinat_old, sr.titik_koordinat_new, 
        sr.batas_koordinat_old, sr.batas_koordinat_new, sr.tags_old, sr.tags_new, sr.gambar_old, sr.gambar_new,
-       a.nama, a.alamat, a.tipe
+       a.nama, a.alamat, a.tipe, sr.id_user_verify, sr.nama_user_verify
 	FROM survey_request sr
 	LEFT JOIN asset a ON sr.id_asset = a.id_asset
 	WHERE sr.id_transaksi_jual_sewa = ?
@@ -395,7 +489,8 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
 	defer stmt.Close()
 
 	// Define sql.NullString to handle NULL values from the database
-	var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew sql.NullString
+	var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew, namaUserVerify sql.NullString
+	var idUserVerify sql.NullInt64
 	nId, _ := strconv.Atoi(surveyreq_id)
 	err = stmt.QueryRow(nId).Scan(
 		&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
@@ -403,7 +498,8 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
 		&dtSurveyReq.Data_lengkap, &usageOld, &usageNew, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new,
 		&dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new,
 		&dtSurveyReq.Titik_koordinat_old, &dtSurveyReq.Titik_koordinat_new, &dtSurveyReq.Batas_koordinat_old,
-		&dtSurveyReq.Batas_koordinat_new, &tagsOld, &tagsNew, &gambarOld, &gambarNew, &dtSurveyReq.Nama_asset, &dtSurveyReq.Lokasi_asset, &dtSurveyReq.Tipe_asset)
+		&dtSurveyReq.Batas_koordinat_new, &tagsOld, &tagsNew, &gambarOld, &gambarNew, &dtSurveyReq.Nama_asset, &dtSurveyReq.Lokasi_asset, &dtSurveyReq.Tipe_asset,
+		&idUserVerify, &namaUserVerify)
 
 	if err != nil {
 		res.Status = 401
@@ -412,6 +508,20 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
 		return res, err
 	}
 
+	if idUserVerify.Valid {
+		dtSurveyReq.Id_user_verify = int(idUserVerify.Int64)
+	} else {
+		dtSurveyReq.Id_user_verify = 0
+	}
+	if namaUserVerify.Valid {
+		if namaUserVerify.String != "" {
+			dtSurveyReq.Nama_user_verify = namaUserVerify.String
+		} else {
+			dtSurveyReq.Nama_user_verify = ""
+		}
+	} else {
+		dtSurveyReq.Nama_user_verify = ""
+	}
 	// Fetch names for old and new usage
 	if usageOld.Valid {
 		dtSurveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
@@ -471,9 +581,13 @@ func GetSurveyReqById(surveyreq_id string) (Response, error) {
 	}
 
 	if gambarNew.Valid {
-		dtSurveyReq.Gambar_new = strings.Split(gambarNew.String, ",")
-		for i := range dtSurveyReq.Gambar_new {
-			dtSurveyReq.Gambar_new[i] = strings.TrimSpace(dtSurveyReq.Gambar_new[i])
+		if gambarNew.String != "" {
+			dtSurveyReq.Gambar_new = strings.Split(gambarNew.String, ",")
+			for i := range dtSurveyReq.Gambar_new {
+				dtSurveyReq.Gambar_new[i] = strings.TrimSpace(dtSurveyReq.Gambar_new[i])
+			}
+		} else {
+			dtSurveyReq.Gambar_new = []string{}
 		}
 	} else {
 		dtSurveyReq.Gambar_new = []string{}
@@ -792,7 +906,6 @@ func GetAllSurveyReqByUserId(user_id string) (Response, error) {
 	}
 	var survey_assignment tempSurvAssignment
 	survey_assignment.OngoingAssignment = arrSurveyReq
-	fmt.Println("ambil finished survey request")
 	// finished assignment
 	var arrSurveyReqFinished = []SurveyorAssignment{}
 	var dtSurveyReqFinished SurveyorAssignment
@@ -911,22 +1024,10 @@ func GetAllOngoingSurveyReqByUserId(user_id string) (Response, error) {
 	return res, nil
 }
 
-func GetAllFinishedSurveyReqByUserId(user_id string) (Response, error) {
+func GetAllSubmittedSurveyReqByUserId(user_id string) (Response, error) {
 	var res Response
-	type SurveyorAssignment struct {
-		Id_transaksi_jual_sewa int    `json:"id_transaksi_jual_sewa"`
-		User_id                int    `json:"user_id"`
-		Id_asset               int    `json:"id_asset"`
-		Created_at             string `json:"created_at"`
-		Dateline               string `json:"dateline"`
-		Status_request         string `json:"status_request"`
-		Status_verifikasi      string `json:"status_verifikasi"`
-		Asset_nama             string `json:"asset_nama"`
-		Asset_alamat           string `json:"asset_alamat"`
-		Asset_titikkoordinat   string `json:"asset_titikkoordinat"`
-	}
-	var arrSurveyReq = []SurveyorAssignment{}
-	var dtSurveyReq SurveyorAssignment
+	var arrSurveyReq = []SurveyRequest{}
+	var dtSurveyReq SurveyRequest
 
 	con, err := db.DbConnection()
 	if err != nil {
@@ -937,9 +1038,284 @@ func GetAllFinishedSurveyReqByUserId(user_id string) (Response, error) {
 	}
 
 	query := `
-		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.status_request, sr.status_verifikasi, sr.dateline, a.nama, a.alamat, a.titik_koordinat 
+		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.dateline,
+			sr.surat_penugasan, sr.status_request, sr.status_verifikasi, sr.status_submitted, sr.data_lengkap, 
+			sr.usage_old, sr.usage_new, sr.luas_old, sr.luas_new, sr.nilai_old, sr.nilai_new,
+			sr.kondisi_old, sr.kondisi_new, sr.titik_koordinat_old, sr.titik_koordinat_new, 
+			sr.batas_koordinat_old, sr.batas_koordinat_new, sr.tags_old, sr.tags_new, sr.gambar_old, sr.gambar_new,
+			a.nama, a.alamat, a.tipe
 		FROM survey_request sr
-		JOIN asset a ON sr.id_asset = a.id_asset
+		LEFT JOIN asset a ON sr.id_asset = a.id_asset
+		WHERE sr.user_id = ? AND sr.status_verifikasi = 'N' AND sr.status_submitted = 'Y'
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(user_id)
+	result, err := stmt.Query(nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+	var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew sql.NullString
+	for result.Next() {
+		err = result.Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
+			&dtSurveyReq.Dateline, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Status_submitted,
+			&dtSurveyReq.Data_lengkap, &usageOld, &usageNew, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new,
+			&dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new,
+			&dtSurveyReq.Titik_koordinat_old, &dtSurveyReq.Titik_koordinat_new, &dtSurveyReq.Batas_koordinat_old,
+			&dtSurveyReq.Batas_koordinat_new, &tagsOld, &tagsNew, &gambarOld, &gambarNew, &dtSurveyReq.Nama_asset, &dtSurveyReq.Lokasi_asset, &dtSurveyReq.Tipe_asset)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan error"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		// Fetch names for old and new usage
+		if usageOld.Valid {
+			dtSurveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Usage_old = []Kegunaan{}
+		}
+
+		if usageNew.Valid {
+			dtSurveyReq.Usage_new, err = fetchUsageNames(con, usageNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Usage_new = []Kegunaan{}
+		}
+
+		if tagsOld.Valid {
+			dtSurveyReq.Tags_old, err = fetchTagNames(con, tagsOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Tags_old = []Tags{}
+		}
+
+		if tagsNew.Valid {
+			dtSurveyReq.Tags_new, err = fetchTagNames(con, tagsNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Tags_new = []Tags{}
+		}
+
+		if gambarOld.Valid {
+			dtSurveyReq.Gambar_old = strings.Split(gambarOld.String, ",")
+			for i := range dtSurveyReq.Gambar_old {
+				dtSurveyReq.Gambar_old[i] = strings.TrimSpace(dtSurveyReq.Gambar_old[i])
+			}
+		} else {
+			dtSurveyReq.Gambar_old = []string{}
+		}
+
+		if gambarNew.Valid {
+			dtSurveyReq.Gambar_new = strings.Split(gambarNew.String, ",")
+			for i := range dtSurveyReq.Gambar_new {
+				dtSurveyReq.Gambar_new[i] = strings.TrimSpace(dtSurveyReq.Gambar_new[i])
+			}
+		} else {
+			dtSurveyReq.Gambar_new = []string{}
+		}
+
+		arrSurveyReq = append(arrSurveyReq, dtSurveyReq)
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrSurveyReq
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllNotVerifiedSurveyReqByUserId(user_id string) (Response, error) {
+	var res Response
+	var arrSurveyReq = []SurveyRequest{}
+	var dtSurveyReq SurveyRequest
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.dateline,
+			sr.surat_penugasan, sr.status_request, sr.status_verifikasi, sr.status_submitted, sr.data_lengkap, 
+			sr.usage_old, sr.usage_new, sr.luas_old, sr.luas_new, sr.nilai_old, sr.nilai_new,
+			sr.kondisi_old, sr.kondisi_new, sr.titik_koordinat_old, sr.titik_koordinat_new, 
+			sr.batas_koordinat_old, sr.batas_koordinat_new, sr.tags_old, sr.tags_new, sr.gambar_old, sr.gambar_new,
+			a.nama, a.alamat, a.tipe
+		FROM survey_request sr
+		LEFT JOIN asset a ON sr.id_asset = a.id_asset
+		WHERE sr.user_id = ? AND sr.status_request = 'O' AND (sr.status_verifikasi = 'N' OR sr.status_verifikasi = 'R') AND sr.status_submitted = 'N'
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	nId, _ := strconv.Atoi(user_id)
+	result, err := stmt.Query(nId)
+	if err != nil {
+		res.Status = 401
+		res.Message = "exec gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer result.Close()
+	var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew sql.NullString
+	for result.Next() {
+		err = result.Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
+			&dtSurveyReq.Dateline, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Status_submitted,
+			&dtSurveyReq.Data_lengkap, &usageOld, &usageNew, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new,
+			&dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new,
+			&dtSurveyReq.Titik_koordinat_old, &dtSurveyReq.Titik_koordinat_new, &dtSurveyReq.Batas_koordinat_old,
+			&dtSurveyReq.Batas_koordinat_new, &tagsOld, &tagsNew, &gambarOld, &gambarNew, &dtSurveyReq.Nama_asset, &dtSurveyReq.Lokasi_asset, &dtSurveyReq.Tipe_asset)
+		if err != nil {
+			res.Status = 401
+			res.Message = "rows scan error"
+			res.Data = err.Error()
+			return res, err
+		}
+
+		// Fetch names for old and new usage
+		if usageOld.Valid {
+			dtSurveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Usage_old = []Kegunaan{}
+		}
+
+		if usageNew.Valid {
+			dtSurveyReq.Usage_new, err = fetchUsageNames(con, usageNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Usage_new = []Kegunaan{}
+		}
+
+		if tagsOld.Valid {
+			dtSurveyReq.Tags_old, err = fetchTagNames(con, tagsOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Tags_old = []Tags{}
+		}
+
+		if tagsNew.Valid {
+			dtSurveyReq.Tags_new, err = fetchTagNames(con, tagsNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Tags_new = []Tags{}
+		}
+
+		if gambarOld.Valid {
+			dtSurveyReq.Gambar_old = strings.Split(gambarOld.String, ",")
+			for i := range dtSurveyReq.Gambar_old {
+				dtSurveyReq.Gambar_old[i] = strings.TrimSpace(dtSurveyReq.Gambar_old[i])
+			}
+		} else {
+			dtSurveyReq.Gambar_old = []string{}
+		}
+
+		if gambarNew.Valid {
+			dtSurveyReq.Gambar_new = strings.Split(gambarNew.String, ",")
+			for i := range dtSurveyReq.Gambar_new {
+				dtSurveyReq.Gambar_new[i] = strings.TrimSpace(dtSurveyReq.Gambar_new[i])
+			}
+		} else {
+			dtSurveyReq.Gambar_new = []string{}
+		}
+
+		arrSurveyReq = append(arrSurveyReq, dtSurveyReq)
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengambil data"
+	res.Data = arrSurveyReq
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
+func GetAllFinishedSurveyReqByUserId(user_id string) (Response, error) {
+	var res Response
+	var arrSurveyReq = []SurveyRequest{}
+	var dtSurveyReq SurveyRequest
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	query := `
+		SELECT sr.id_transaksi_jual_sewa, sr.user_id, sr.id_asset, sr.created_at, sr.dateline,
+			sr.surat_penugasan, sr.status_request, sr.status_verifikasi, sr.status_submitted, sr.data_lengkap, 
+			sr.usage_old, sr.usage_new, sr.luas_old, sr.luas_new, sr.nilai_old, sr.nilai_new,
+			sr.kondisi_old, sr.kondisi_new, sr.titik_koordinat_old, sr.titik_koordinat_new, 
+			sr.batas_koordinat_old, sr.batas_koordinat_new, sr.tags_old, sr.tags_new, sr.gambar_old, sr.gambar_new,
+			a.nama, a.alamat, a.tipe
+		FROM survey_request sr
+		LEFT JOIN asset a ON sr.id_asset = a.id_asset
 		WHERE sr.user_id = ? AND sr.status_request = 'F'
 	`
 	stmt, err := con.Prepare(query)
@@ -960,15 +1336,88 @@ func GetAllFinishedSurveyReqByUserId(user_id string) (Response, error) {
 		return res, err
 	}
 	defer result.Close()
+	var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew sql.NullString
 	for result.Next() {
 		err = result.Scan(&dtSurveyReq.Id_transaksi_jual_sewa, &dtSurveyReq.User_id, &dtSurveyReq.Id_asset, &dtSurveyReq.Created_at,
-			&dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Dateline, &dtSurveyReq.Asset_nama, &dtSurveyReq.Asset_alamat, &dtSurveyReq.Asset_titikkoordinat)
+			&dtSurveyReq.Dateline, &dtSurveyReq.Surat_penugasan, &dtSurveyReq.Status_request, &dtSurveyReq.Status_verifikasi, &dtSurveyReq.Status_submitted,
+			&dtSurveyReq.Data_lengkap, &usageOld, &usageNew, &dtSurveyReq.Luas_old, &dtSurveyReq.Luas_new,
+			&dtSurveyReq.Nilai_old, &dtSurveyReq.Nilai_new, &dtSurveyReq.Kondisi_old, &dtSurveyReq.Kondisi_new,
+			&dtSurveyReq.Titik_koordinat_old, &dtSurveyReq.Titik_koordinat_new, &dtSurveyReq.Batas_koordinat_old,
+			&dtSurveyReq.Batas_koordinat_new, &tagsOld, &tagsNew, &gambarOld, &gambarNew, &dtSurveyReq.Nama_asset, &dtSurveyReq.Lokasi_asset, &dtSurveyReq.Tipe_asset)
 		if err != nil {
 			res.Status = 401
-			res.Message = "rows scan"
+			res.Message = "rows scan error"
 			res.Data = err.Error()
 			return res, err
 		}
+
+		// Fetch names for old and new usage
+		if usageOld.Valid {
+			dtSurveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Usage_old = []Kegunaan{}
+		}
+
+		if usageNew.Valid {
+			dtSurveyReq.Usage_new, err = fetchUsageNames(con, usageNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Usage_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Usage_new = []Kegunaan{}
+		}
+
+		if tagsOld.Valid {
+			dtSurveyReq.Tags_old, err = fetchTagNames(con, tagsOld.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_old: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Tags_old = []Tags{}
+		}
+
+		if tagsNew.Valid {
+			dtSurveyReq.Tags_new, err = fetchTagNames(con, tagsNew.String)
+			if err != nil {
+				res.Status = 401
+				res.Message = fmt.Sprintf("Error fetching Tags_new: %v", err)
+				res.Data = nil
+				return res, err
+			}
+		} else {
+			dtSurveyReq.Tags_new = []Tags{}
+		}
+
+		if gambarOld.Valid {
+			dtSurveyReq.Gambar_old = strings.Split(gambarOld.String, ",")
+			for i := range dtSurveyReq.Gambar_old {
+				dtSurveyReq.Gambar_old[i] = strings.TrimSpace(dtSurveyReq.Gambar_old[i])
+			}
+		} else {
+			dtSurveyReq.Gambar_old = []string{}
+		}
+
+		if gambarNew.Valid {
+			dtSurveyReq.Gambar_new = strings.Split(gambarNew.String, ",")
+			for i := range dtSurveyReq.Gambar_new {
+				dtSurveyReq.Gambar_new[i] = strings.TrimSpace(dtSurveyReq.Gambar_new[i])
+			}
+		} else {
+			dtSurveyReq.Gambar_new = []string{}
+		}
+
 		arrSurveyReq = append(arrSurveyReq, dtSurveyReq)
 	}
 
@@ -1142,7 +1591,6 @@ func SubmitSurveyReqById(id int, usage string, luas, nilai float64, kondisi, tit
 		tempsubmitsurveyreq.Id,
 	)
 
-	fmt.Println("datalengkap:", datalengkap)
 	if err != nil {
 		res.Status = 401
 		res.Message = "Failed to execute statement"
@@ -1249,8 +1697,33 @@ func SubmitSurveyReqByIdWithFile(id int, usage string, luas, nilai float64, kond
 	tempsubmitsurveyreq.Batas_koordinat = batas_koordinat
 	tempsubmitsurveyreq.Tags = tags
 
+	// ambil gambar new
+	queryGambarNew := `
+	SELECT gambar_new FROM survey_request WHERE id_transaksi_jual_sewa = ?
+	`
+	stmtGambarNew, err := con.Prepare(queryGambarNew)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtGambarNew.Close()
+
+	var tempGambarNew string
+	err = stmtGambarNew.QueryRow(tempsubmitsurveyreq.Id).Scan(&tempGambarNew)
+	if err != nil {
+		res.Status = 401
+		res.Message = "Failed to execute statement"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	tempArrGambarNew := strings.Split(tempGambarNew, ",")
+	tempArrGambarNew = append(tempArrGambarNew, filePaths...)
+
 	// Convert file paths to a string to store in the DB (comma-separated or JSON)
-	filesStr := strings.Join(filePaths, ",")
+	filesStr := strings.Join(tempArrGambarNew, ",")
 
 	// Prepare and execute the SQL query
 	query := "UPDATE survey_request SET `usage_new` = ?, luas_new = ?, nilai_new = ?, kondisi_new = ?, titik_koordinat_new = ?, batas_koordinat_new = ?, tags_new = ?, gambar_new = ?, data_lengkap = ?, status_verifikasi=? ,status_submitted='Y' WHERE id_transaksi_jual_sewa = ?"
@@ -1691,6 +2164,7 @@ func GetAllTranReq() (Response, error) {
 	LEFT JOIN perusahaan p ON tr.perusahaan_id = p.perusahaan_id
 	LEFT JOIN user u ON tr.user_id = u.user_id
 	LEFT JOIN asset a ON tr.id_asset = a.id_asset
+	ORDER BY tr.created_at DESC
 	`
 	rows, err := con.Query(query)
 	if err != nil {
@@ -1904,7 +2378,6 @@ func UserManagementGetMeetingByUserId(user_id string) (Response, error) {
 
 func UserManagementGetMeetingByPerusahaanId(perusahaan_id string) (Response, error) {
 	var res Response
-	fmt.Println("GET MEETING BY PERUSAHAAN ID")
 	var assetsMap = make(map[int][]Progress)
 	var grupAsset []GrupAsset
 
@@ -1955,8 +2428,6 @@ func UserManagementGetMeetingByPerusahaanId(perusahaan_id string) (Response, err
 		res.Data = err.Error()
 		return res, err
 	}
-
-	fmt.Println(assetsMap)
 
 	for assetId, progressList := range assetsMap {
 		exists := false
@@ -2480,7 +2951,6 @@ func GetProgressNotDoneByUserId(user_id string) (Response, error) {
 func GetProgressByUserAsetId(user_id, aset_id string) (Response, error) {
 	var res Response
 	var arrProgress = []Progress{}
-	fmt.Println(user_id, aset_id)
 
 	con, err := db.DbConnection()
 	if err != nil {

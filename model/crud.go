@@ -69,27 +69,22 @@ func UploadFile(file *multipart.FileHeader, id string, kolom_id string, folder s
 }
 
 func UpdateDataFotoPath(tabel string, kolom string, path string, kolom_id string, id int) error {
-	log.Println("mengubah status foto di DB")
-	fmt.Println("mengubah status foto di DB")
 	// Open DB connection
 	con, err := db.DbConnection()
 	if err != nil {
 		log.Println("error: " + err.Error())
 		return err
 	}
-	defer db.DbClose(con) // Ensure the connection is closed
+	defer db.DbClose(con)
 
-	// Build the SQL query
 	query := fmt.Sprintf("UPDATE %s SET %s='%s' WHERE %s = %d", tabel, kolom, path, kolom_id, id)
-	fmt.Println(query)
-	// Execute the query
-	_, err = con.Exec(query) // Use Exec instead of Query since this is an UPDATE operation
+
+	_, err = con.Exec(query)
 	if err != nil {
 		log.Println("error executing query: " + err.Error())
 		return err
 	}
 
-	fmt.Println("status foto di edit")
 	return nil
 }
 
@@ -590,7 +585,7 @@ func GetNotificationById(id string) (Response, error) {
 	DeleteNotification()
 
 	query := `
-	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail
+	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail, is_read
 	FROM notification
 	WHERE notification_id = ?
 	`
@@ -605,7 +600,7 @@ func GetNotificationById(id string) (Response, error) {
 	nId, _ := strconv.Atoi(id)
 	err = stmt.QueryRow(nId).Scan(
 		&dtNotif.Notification_id, &dtNotif.User_id_sender, &dtNotif.User_id_receiver, &dtNotif.Perusahaan_id_receiver,
-		&dtNotif.Created_at, &dtNotif.Title, &dtNotif.Detail,
+		&dtNotif.Created_at, &dtNotif.Title, &dtNotif.Detail, &dtNotif.Is_read,
 	)
 	if err != nil {
 		res.Status = 401
@@ -637,7 +632,7 @@ func GetNotificationByUserIdReceiver(user_id string) (Response, error) {
 	DeleteNotification()
 
 	query := `
-	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail 
+	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail, is_read
 	FROM notification
 	WHERE user_id_receiver = ?
 	`
@@ -665,7 +660,7 @@ func GetNotificationByUserIdReceiver(user_id string) (Response, error) {
 		err := rows.Scan(
 			&dtNotif.Notification_id, &dtNotif.User_id_sender,
 			&dtNotif.User_id_receiver, &dtNotif.Perusahaan_id_receiver, &dtNotif.Created_at,
-			&dtNotif.Title, &dtNotif.Detail,
+			&dtNotif.Title, &dtNotif.Detail, &dtNotif.Is_read,
 		)
 		if err != nil {
 			res.Status = 401
@@ -700,7 +695,7 @@ func GetNotificationByPerusahaanIdReceiver(perusahaan_id string) (Response, erro
 	DeleteNotification()
 
 	query := `
-	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail 
+	SELECT notification_id, user_id_sender, IFNULL(user_id_receiver,0), IFNULL(perusahaan_id_receiver,0), created_at, notification_title, notification_detail, is_read 
 	FROM notification
 	WHERE perusahaan_id_receiver = ?
 	`
@@ -728,7 +723,7 @@ func GetNotificationByPerusahaanIdReceiver(perusahaan_id string) (Response, erro
 		err := rows.Scan(
 			&dtNotif.Notification_id, &dtNotif.User_id_sender,
 			&dtNotif.User_id_receiver, &dtNotif.Perusahaan_id_receiver, &dtNotif.Created_at,
-			&dtNotif.Title, &dtNotif.Detail,
+			&dtNotif.Title, &dtNotif.Detail, &dtNotif.Is_read,
 		)
 		if err != nil {
 			res.Status = 401
@@ -751,6 +746,88 @@ func GetNotificationByPerusahaanIdReceiver(perusahaan_id string) (Response, erro
 	res.Data = arrNotification
 
 	defer db.DbClose(con)
+	return res, nil
+}
+
+func UbahIsReadNotifById(id, is_read string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	DeleteNotification()
+
+	query := `
+	UPDATE notification SET is_read = ? WHERE notification_id = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(is_read, id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil ubah is read notification"
+
+	defer db.DbClose(con)
+
+	return res, nil
+}
+
+func UbahIsReadNotifByUserId(user_id string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	DeleteNotification()
+
+	query := `
+	UPDATE notification SET is_read = Y WHERE user_id_receiver = ?
+	`
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(user_id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "query gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil ubah is read notification by user id"
+
+	defer db.DbClose(con)
+
 	return res, nil
 }
 
@@ -805,8 +882,6 @@ func ForgotPasswordKirimEmail(email string) (Response, error) {
 		res.Message = "Invalid email"
 		res.Data = err.Error()
 		return res, err
-	} else {
-		fmt.Println("email valid")
 	}
 
 	// cek sudah terdaftar atau belum
@@ -899,8 +974,6 @@ func ForgotPasswordKirimOTP(email, kode_otp string) (Response, error) {
 		res.Message = "Invalid email"
 		res.Data = err.Error()
 		return res, err
-	} else {
-		fmt.Println("email valid")
 	}
 
 	// cek sudah terdaftar atau belum
@@ -936,10 +1009,6 @@ func ForgotPasswordKirimOTP(email, kode_otp string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	fmt.Println("user id:", userId)
-	fmt.Println("kode otp:", kodeOTP)
-	fmt.Println("kode otp input:", kode_otp)
-
 	if kode_otp != kodeOTP {
 		res.Status = 401
 		res.Message = "Kode OTP salah"
@@ -972,8 +1041,6 @@ func ForgotPasswordGantiPass(email, newpass string) (Response, error) {
 		res.Message = "Invalid email"
 		res.Data = err.Error()
 		return res, err
-	} else {
-		fmt.Println("email valid")
 	}
 
 	// cek sudah terdaftar atau belum
@@ -1041,3 +1108,23 @@ func ForgotPasswordGantiPass(email, newpass string) (Response, error) {
 	defer db.DbClose(con)
 	return res, nil
 }
+
+// func BuatEventGoogleCalendar() (Response, error) {
+// 	var res Response
+// 	tempSummary := "testing buat event calendar"
+// 	tempDescription := "testing buat event calendar - deskripsi"
+// 	const tempEvent := {
+// 		'summary': tempSummary,
+// 		'description': tempDescription,
+// 		'start':{
+// 			'dateTime'
+// 			'timeZone'
+// 		}
+// 		'end':{
+// 			'dateTime'
+// 			'timeZone'
+// 		}
+// 	}
+// 	await fetch("")
+// 	return res,nil
+// }

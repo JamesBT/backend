@@ -2,7 +2,6 @@ package controler
 
 import (
 	"TemplateProject/model"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -203,6 +202,26 @@ func GetAllAsset(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func GetAllAssetOthers(c echo.Context) error {
+	result, err := model.GetAllAssetOthers()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAllAssetDitawarkan(c echo.Context) error {
+	result, err := model.GetAllAssetDitawarkan()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func GetAssetById(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.GetAssetById(id)
@@ -250,6 +269,17 @@ func GetAssetByName(c echo.Context) error {
 func GetAssetDetailedById(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.GetAssetDetailedById(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func GetAssetDetailedByIdAllGambar(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAssetDetailedByIdAllGambar(id)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 	}
@@ -391,6 +421,7 @@ func UpdateAssetById(c echo.Context) error {
 	usage := c.FormValue("usage")
 	tags := c.FormValue("tags")
 	provinsi := c.FormValue("provinsi")
+	status_gambar := c.FormValue("status_gambar")
 	var files []*multipart.FileHeader
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -409,7 +440,7 @@ func UpdateAssetById(c echo.Context) error {
 	}
 	result, err := model.UpdateAssetById(
 		fileLegalitas, suratKuasa, asetId, asetName, surat_legalitas, tipe, usage, tags, nomorLegalitas, status, alamat,
-		kondisi, koordinat, batasKoordinat, luas, nilai, provinsi, files)
+		kondisi, koordinat, batasKoordinat, luas, nilai, provinsi, status_gambar, files)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -425,6 +456,20 @@ func FilterAsset(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
 	result, err := model.FilterAsset(string(input))
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func FilterAssetSewa(c echo.Context) error {
+	input, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
+	}
+	result, err := model.FilterAssetSewa(string(input))
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -902,6 +947,16 @@ func GetAllSurveyReq(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func CustomGetAllSurveyReqDetailed(c echo.Context) error {
+	result, err := model.CustomGetAllSurveyReqDetailed()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
 func GetAllSurveyReqDetailed(c echo.Context) error {
 	result, err := model.GetAllSurveyReqDetailed()
 	if err != nil {
@@ -959,6 +1014,30 @@ func GetAllSurveyReqByUserId(c echo.Context) error {
 func GetAllOngoingSurveyReqByUserId(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.GetAllOngoingSurveyReqByUserId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+// submit belum di verif
+func GetAllSubmittedSurveyReqByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAllSubmittedSurveyReqByUserId(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+// masih ongoing
+func GetAllNotVerifiedSurveyReqByUserId(c echo.Context) error {
+	id := c.Param("id")
+	result, err := model.GetAllNotVerifiedSurveyReqByUserId(id)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -1256,13 +1335,27 @@ func UpdateUserById(c echo.Context) error {
 	username := c.FormValue("username")
 	password := c.FormValue("password")
 	nama_lengkap := c.FormValue("nama_lengkap")
-	email := c.FormValue("email")
 	no_telp := c.FormValue("no_telp")
 	fileFoto, err := c.FormFile("fileFoto")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Gagal membaca body request"})
 	}
-	result, err := model.UpdateUserById(fileFoto, userId, username, password, nama_lengkap, email, no_telp)
+	result, err := model.UpdateUserById(fileFoto, userId, username, password, nama_lengkap, no_telp)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UpdateUserByIdTanpaFoto(c echo.Context) error {
+	userId := c.FormValue("id")
+	username := c.FormValue("username")
+	password := c.FormValue("password")
+	nama_lengkap := c.FormValue("nama_lengkap")
+	no_telp := c.FormValue("no_telp")
+	result, err := model.UpdateUserByIdTanpaFoto(userId, username, password, nama_lengkap, no_telp)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
@@ -1312,13 +1405,10 @@ func DeleteUserById(c echo.Context) error {
 func GetUserKTP(c echo.Context) error {
 	id := c.Param("id")
 
-	fmt.Println(id)
 	result, err := model.GetUserKTP(id)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
-
-	fmt.Println(result.Data)
 
 	path, ok := result.Data.(string)
 	if !ok {
@@ -1334,13 +1424,10 @@ func GetUserKTP(c echo.Context) error {
 func GetUserFoto(c echo.Context) error {
 	id := c.Param("id")
 
-	fmt.Println(id)
 	result, err := model.GetUserFoto(id)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}
-
-	fmt.Println(result.Data)
 
 	path, ok := result.Data.(string)
 	if !ok {
@@ -1811,6 +1898,29 @@ func GetNotificationByUserIdReceiver(c echo.Context) error {
 func GetNotificationByPerusahaanIdReceiver(c echo.Context) error {
 	id := c.Param("id")
 	result, err := model.GetNotificationByPerusahaanIdReceiver(id)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UbahIsReadNotifById(c echo.Context) error {
+	id := c.Param("id")
+	is_read := c.Param("is_read")
+	result, err := model.UbahIsReadNotifById(id, is_read)
+	if err != nil {
+		return c.JSON(result.Status, map[string]string{"message": err.Error()})
+	}
+	ip := c.RealIP()
+	model.InsertLog(ip, "UploadFoto", result.Data, 3)
+	return c.JSON(http.StatusOK, result)
+}
+
+func UbahIsReadNotifByUserId(c echo.Context) error {
+	user_id := c.Param("user_id")
+	result, err := model.UbahIsReadNotifByUserId(user_id)
 	if err != nil {
 		return c.JSON(result.Status, map[string]string{"message": err.Error()})
 	}

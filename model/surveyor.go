@@ -74,10 +74,6 @@ func LoginSurveyor(akun string) (Response, error) {
 		return res, errors.New("query password gagal")
 	}
 
-	fmt.Println("user id: ", userId)
-	fmt.Println("user password: ", usr.Password)
-	fmt.Println("pass db:", tempDBPass)
-
 	// cek pass sama atau tidak
 	err = bcrypt.CompareHashAndPassword([]byte(tempDBPass), []byte(usr.Password))
 	if err != nil {
@@ -204,7 +200,6 @@ func SignUpSurveyor(akun string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-	// fmt.Println("username:", usr.Username, "id: ", userId)
 	if err == nil {
 		// User sudah kedaftar
 		res.Status = 401
@@ -434,7 +429,6 @@ func GetAllSurveyor() (Response, error) {
 func GetSurveyorById(surveyor_id string) (Response, error) {
 	var res Response
 	var dtSurveyor UserSurveyor
-	fmt.Println("get user by user id")
 	con, err := db.DbConnection()
 	if err != nil {
 		res.Status = 401
@@ -815,7 +809,6 @@ func GetAllSurveyorDetailed() (Response, error) {
 func GetSurveyorByUserId(user_id string) (Response, error) {
 	var res Response
 	var dtSurveyor UserSurveyor
-	fmt.Println("get user by user id")
 	con, err := db.DbConnection()
 	if err != nil {
 		res.Status = 401
@@ -908,10 +901,11 @@ func GetSurveyorByUserId(user_id string) (Response, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var _surveyReq SurveyRequest
-		var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew sql.NullString
+		var idUserVerify sql.NullInt64
+		var usageOld, usageNew, tagsOld, tagsNew, gambarOld, gambarNew, namaUserVerify sql.NullString
 		err := rows.Scan(
 			&_surveyReq.Id_transaksi_jual_sewa, &_surveyReq.User_id, &_surveyReq.Id_asset,
-			&_surveyReq.Created_at, &_surveyReq.Surat_penugasan, &_surveyReq.Dateline,
+			&_surveyReq.Created_at, &idUserVerify, &namaUserVerify, &_surveyReq.Surat_penugasan, &_surveyReq.Dateline,
 			&_surveyReq.Status_request, &_surveyReq.Status_verifikasi,
 			&_surveyReq.Status_submitted, &_surveyReq.Data_lengkap, &usageOld, &usageNew,
 			&_surveyReq.Luas_old, &_surveyReq.Luas_new, &_surveyReq.Nilai_old,
@@ -926,6 +920,20 @@ func GetSurveyorByUserId(user_id string) (Response, error) {
 			return res, err
 		}
 
+		if idUserVerify.Valid {
+			_surveyReq.Id_user_verify = int(idUserVerify.Int64)
+		} else {
+			_surveyReq.Id_user_verify = 0
+		}
+		if namaUserVerify.Valid {
+			if namaUserVerify.String != "" {
+				_surveyReq.Nama_user_verify = namaUserVerify.String
+			} else {
+				_surveyReq.Nama_user_verify = ""
+			}
+		} else {
+			_surveyReq.Nama_user_verify = ""
+		}
 		if usageOld.Valid {
 			_surveyReq.Usage_old, err = fetchUsageNames(con, usageOld.String)
 			if err != nil {
@@ -1048,7 +1056,6 @@ func UpdateUserBySurveyorId(input string) (Response, error) {
 		return res, err
 	}
 
-	fmt.Println("userid: ", userSurveyor.UserId)
 	query := "UPDATE user SET username = ?, password = ?, nama_lengkap = ?, email = ?, nomor_telepon = ?,updated_at = NOW() WHERE user_id = ? "
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -1107,6 +1114,38 @@ func UpdateSurveyorByUserId(input string) (Response, error) {
 		return res, err
 	}
 
+	var tempPass string
+	queryPass := "SELECT password FROM user WHERE user_id = ?"
+	stmtPass, err := con.Prepare(queryPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtPass.Close()
+	err = stmtPass.QueryRow(userSurveyor.UserId).Scan(&tempPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var hashedPass string
+	if tempPass != userSurveyor.Password {
+		tempHashedPass, err := bcrypt.GenerateFromPassword([]byte(userSurveyor.Password), 10)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		hashedPass = string(tempHashedPass)
+	} else {
+		hashedPass = userSurveyor.Password
+	}
+
 	query := "UPDATE user SET username = ?, password = ?, nama_lengkap = ?, email = ?, nomor_telepon = ?,updated_at = NOW() WHERE user_id = ? "
 	stmt, err := con.Prepare(query)
 	if err != nil {
@@ -1117,7 +1156,7 @@ func UpdateSurveyorByUserId(input string) (Response, error) {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(userSurveyor.Username, userSurveyor.Password, userSurveyor.Nama, userSurveyor.Email, userSurveyor.NoTelp, userSurveyor.UserId)
+	_, err = stmt.Exec(userSurveyor.Username, hashedPass, userSurveyor.Nama, userSurveyor.Email, userSurveyor.NoTelp, userSurveyor.UserId)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"

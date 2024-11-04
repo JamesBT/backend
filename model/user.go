@@ -52,8 +52,6 @@ func Login(akun string) (Response, error) {
 		return res, err
 	}
 
-	fmt.Println("ambil user id")
-
 	var userId int
 	err = stmt.QueryRow(usr.Username).Scan(&userId)
 	if err != nil {
@@ -63,8 +61,6 @@ func Login(akun string) (Response, error) {
 		return res, errors.New("pengguna belum terdaftar atau telah dihapus")
 	}
 	defer stmt.Close()
-
-	fmt.Println("user id: ", userId)
 
 	var tempDBPass string
 	querypass := `SELECT password FROM user WHERE user_id = ?;`
@@ -234,9 +230,41 @@ func SignUp(akun string) (Response, error) {
 		res.Message = "Invalid email"
 		res.Data = err.Error()
 		return res, err
-	} else {
-		fmt.Println("email valid")
 	}
+
+	// cek email sudah terpakai 3 kali atau tidak
+	cekEmailQuery := `
+		SELECT email FROM user WHERE email = ?
+	`
+	stmtEmailQuery, err := con.Prepare(cekEmailQuery)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var userEmail string
+	err = stmtEmailQuery.QueryRow(usr.Email).Scan(&userEmail)
+	if err == nil {
+		if userEmail != "" {
+			res.Status = 401
+			res.Message = "Email already registered"
+			res.Data = "User email: " + fmt.Sprint(usr.Email)
+			return res, errors.New("user already registered")
+		} else {
+			res.Status = 500
+			res.Message = "Query execution failed"
+			res.Data = errors.New("query exec failed")
+			return res, err
+		}
+	} else if err != sql.ErrNoRows {
+		res.Status = 500
+		res.Message = "Query execution failed"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
 
 	hashedPass, err := bcrypt.GenerateFromPassword([]byte(usr.Password), 10)
 	if err != nil {
@@ -256,7 +284,6 @@ func SignUp(akun string) (Response, error) {
 		return res, err
 	}
 	defer insertstmt.Close()
-	fmt.Println(usr)
 	result, err := insertstmt.Exec(usr.Username, string(hashedPass), usr.Nama_lengkap, usr.Email, usr.No_telp)
 	if err != nil {
 		res.Status = 401
@@ -461,7 +488,7 @@ func GetUserById(id_user string) (Response, error) {
 	}
 
 	query := `
-	SELECT u.user_id, u.username, u.nama_lengkap, u.alamat, u.jenis_kelamin, IFNULL(u.tanggal_lahir,""), 
+	SELECT u.user_id, u.username, u.password, u.nama_lengkap, u.alamat, u.jenis_kelamin, IFNULL(u.tanggal_lahir,""), 
 	u.email, u.nomor_telepon, u.foto_profil, u.ktp, ur.role_id, r.nama_role 
 	FROM user u
 	LEFT JOIN user_role ur ON u.user_id = ur.user_id
@@ -480,7 +507,7 @@ func GetUserById(id_user string) (Response, error) {
 
 	nId, _ := strconv.Atoi(id_user)
 	var tempDtRole Role
-	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Nama_lengkap, &usr.Alamat, &usr.Jenis_kelamin, &usr.Tgl_lahir, &usr.Email, &usr.No_telp, &usr.Foto_profil, &usr.Ktp, &tempDtRole.Role_id, &tempDtRole.Nama_role)
+	err = stmt.QueryRow(nId).Scan(&usr.Id, &usr.Username, &usr.Password, &usr.Nama_lengkap, &usr.Alamat, &usr.Jenis_kelamin, &usr.Tgl_lahir, &usr.Email, &usr.No_telp, &usr.Foto_profil, &usr.Ktp, &tempDtRole.Role_id, &tempDtRole.Nama_role)
 	if err != nil {
 		res.Status = 401
 		res.Message = "rows gagal"
@@ -676,7 +703,6 @@ func UpdateUser(filefoto *multipart.FileHeader, userid, username, nama_lengkap, 
 
 	// tambah file foto profile dan ktp
 	// foto profil ======================================================
-	fmt.Println(filefoto.Header.Get("Content-type"))
 	// tipe := filefoto.Header.Get("Content-type")
 
 	filefoto.Filename = userid + "_" + filefoto.Filename
@@ -719,7 +745,7 @@ func UpdateUser(filefoto *multipart.FileHeader, userid, username, nama_lengkap, 
 	return res, nil
 }
 
-func UpdateUserById(filefoto *multipart.FileHeader, id, username, password, nama_lengkap, email, no_telp string) (Response, error) {
+func UpdateUserById(filefoto *multipart.FileHeader, id, username, password, nama_lengkap, no_telp string) (Response, error) {
 	var res Response
 
 	con, err := db.DbConnection()
@@ -762,7 +788,7 @@ func UpdateUserById(filefoto *multipart.FileHeader, id, username, password, nama
 		hashedPass = password
 	}
 
-	query := "UPDATE user SET username = ?, password = ?, nama_lengkap = ?, email = ?, nomor_telepon = ?, updated_at = NOW() WHERE user_id = ? "
+	query := "UPDATE user SET username = ?, password = ?, nama_lengkap = ?, nomor_telepon = ?, updated_at = NOW() WHERE user_id = ? "
 	stmt, err := con.Prepare(query)
 	if err != nil {
 		res.Status = 401
@@ -772,7 +798,7 @@ func UpdateUserById(filefoto *multipart.FileHeader, id, username, password, nama
 	}
 	defer stmt.Close()
 
-	result, err := stmt.Exec(username, hashedPass, nama_lengkap, email, no_telp, id)
+	result, err := stmt.Exec(username, hashedPass, nama_lengkap, no_telp, id)
 	if err != nil {
 		res.Status = 401
 		res.Message = "stmt gagal"
@@ -877,7 +903,6 @@ func UpdateUserFull(filefoto *multipart.FileHeader, filektp *multipart.FileHeade
 
 	// tambah file foto profile dan ktp
 	// foto profil ======================================================
-	fmt.Println(filefoto.Header.Get("Content-type"))
 	// tipe := filefoto.Header.Get("Content-type")
 
 	tipeGambar := ".png"
@@ -963,6 +988,75 @@ func UpdateUserFull(filefoto *multipart.FileHeader, filektp *multipart.FileHeade
 	return res, nil
 }
 
+func UpdateUserByIdTanpaFoto(id, username, password, nama_lengkap, no_telp string) (Response, error) {
+	var res Response
+
+	con, err := db.DbConnection()
+	if err != nil {
+		res.Status = 401
+		res.Message = "gagal membuka database"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var tempPass string
+	queryPass := "SELECT password FROM user WHERE user_id = ?"
+	stmtPass, err := con.Prepare(queryPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmtPass.Close()
+	err = stmtPass.QueryRow(id).Scan(&tempPass)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	var hashedPass string
+	if tempPass != password {
+		tempHashedPass, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+		if err != nil {
+			res.Status = 401
+			res.Message = "stmt gagal"
+			res.Data = err.Error()
+			return res, err
+		}
+		hashedPass = string(tempHashedPass)
+	} else {
+		hashedPass = password
+	}
+
+	query := "UPDATE user SET username = ?, password = ?, nama_lengkap = ?, nomor_telepon = ?, updated_at = NOW() WHERE user_id = ? "
+	stmt, err := con.Prepare(query)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(username, hashedPass, nama_lengkap, no_telp, id)
+	if err != nil {
+		res.Status = 401
+		res.Message = "stmt gagal"
+		res.Data = err.Error()
+		return res, err
+	}
+
+	res.Status = http.StatusOK
+	res.Message = "Berhasil mengupdate data"
+	res.Data = result
+
+	defer db.DbClose(con)
+	return res, nil
+}
+
 func GetAllUserUnverified() (Response, error) {
 	var res Response
 	var arrUser = []User{}
@@ -993,7 +1087,6 @@ func GetAllUserUnverified() (Response, error) {
 		return res, err
 	}
 	defer result.Close()
-	fmt.Println("")
 	for result.Next() {
 		var dtUser User
 		err = result.Scan(&dtUser.Id, &dtUser.Username, &dtUser.Password, &dtUser.Nama_lengkap, &dtUser.Alamat, &dtUser.Jenis_kelamin, &dtUser.Tgl_lahir, &dtUser.Email, &dtUser.No_telp, &dtUser.Foto_profil, &dtUser.Ktp)
@@ -1003,7 +1096,6 @@ func GetAllUserUnverified() (Response, error) {
 			res.Data = err.Error()
 			return res, err
 		}
-		fmt.Println("data user:", dtUser)
 		arrUser = append(arrUser, dtUser)
 	}
 
@@ -1309,7 +1401,7 @@ func CobaHashing(input string) (Response, error) {
 		res.Message = "Error"
 		return res, err
 	}
-	fmt.Println(string(hasilHash))
+
 	res.Status = 200
 	res.Message = "hashing berhasil"
 	res.Data = string(hasilHash)
@@ -1345,8 +1437,6 @@ func SamainPassword(input, id string) (Response, error) {
 		res.Data = err.Error()
 		return res, err
 	}
-
-	fmt.Println(dtPass)
 
 	err = bcrypt.CompareHashAndPassword([]byte(dtPass), []byte(input))
 	if err != nil {
