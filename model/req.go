@@ -1686,6 +1686,7 @@ func SubmitSurveyReqByIdWithFile(id int, usage string, luas, nilai float64, kond
 		}
 		filePaths = append(filePaths, filePath)
 	}
+	fmt.Println("path file gambar", filePaths)
 
 	// Set the struct data
 	tempsubmitsurveyreq.Id = id
@@ -1720,7 +1721,12 @@ func SubmitSurveyReqByIdWithFile(id int, usage string, luas, nilai float64, kond
 	}
 
 	tempArrGambarNew := strings.Split(tempGambarNew, ",")
-	tempArrGambarNew = append(tempArrGambarNew, filePaths...)
+	if tempArrGambarNew[0] == "" {
+		tempArrGambarNew = filePaths
+	} else {
+		tempArrGambarNew = append(tempArrGambarNew, filePaths...)
+
+	}
 
 	// Convert file paths to a string to store in the DB (comma-separated or JSON)
 	filesStr := strings.Join(tempArrGambarNew, ",")

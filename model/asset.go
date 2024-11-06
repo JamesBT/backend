@@ -311,9 +311,9 @@ func CreateAssetMultipleFile(filelegalitas *multipart.FileHeader, suratkuasa *mu
 	// VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
 	// `
 	query := `
-	INSERT INTO asset (nama, tipe, nomor_legalitas, status_asset, surat_legalitas, alamat, 
+	INSERT INTO asset (nama, tipe, nomor_legalitas, file_legalitas, status_asset, surat_kuasa, surat_legalitas, alamat, 
 	kondisi, titik_koordinat, batas_koordinat, luas, nilai, provinsi, created_at) 
-	VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+	VALUES (?,?,?,'',?,'',?,?,?,?,?,?,?,?,NOW())
 	`
 	stmt, err := con.Prepare(query)
 	if err != nil {
